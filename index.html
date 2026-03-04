@@ -12,14 +12,21 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
 <style>
+
 body{
 font-family:Inter,system-ui,sans-serif;
 background:#f6f9fc;
 }
+
 .chat{
 max-height:60vh;
 overflow-y:auto;
 }
+
+.sidebar{
+width:220px;
+}
+
 </style>
 
 </head>
@@ -36,7 +43,7 @@ overflow-y:auto;
 Gee Support AI
 </h1>
 
-<input id="name" class="border p-2 w-full rounded" placeholder="Your Name">
+<input id="name" class="border p-2 w-full rounded" placeholder="Agent Name">
 
 <input id="apikey" type="password" class="border p-2 w-full rounded" placeholder="Gemini API Key">
 
@@ -51,22 +58,15 @@ Login
 
 <!-- APP -->
 
-<div id="app" class="hidden max-w-5xl mx-auto p-6">
+<div id="app" class="hidden flex">
 
-<div class="flex justify-between mb-6">
+<!-- SIDEBAR -->
 
-<h1 class="text-xl font-bold">Gee Support AI</h1>
+<div class="sidebar bg-white shadow h-screen p-4">
 
-<div class="flex gap-3">
+<h2 class="font-bold mb-4">Formats</h2>
 
-<button id="clear" class="text-gray-500">Clear</button>
-<button id="logout" class="text-red-500">Logout</button>
-
-</div>
-
-</div>
-
-<select id="format" class="border p-2 mb-4 rounded">
+<select id="format" class="border p-2 w-full rounded">
 
 <option value="EO">Email Outline</option>
 <option value="CL">Chat / RAC Notes</option>
@@ -76,15 +76,33 @@ Login
 
 </select>
 
+<hr class="my-4">
+
+<button id="clear" class="text-sm text-gray-500 mb-2">Clear Chat</button>
+<button id="logout" class="text-sm text-red-500">Logout</button>
+
+</div>
+
+
+<!-- MAIN -->
+
+<div class="flex-1 p-6">
+
+<h1 class="text-xl font-bold mb-4">
+Gee Support AI
+</h1>
+
 <div id="messages" class="chat space-y-4 mb-6"></div>
 
 <div class="flex gap-2">
 
-<textarea id="input" rows="3" class="border p-3 flex-1 rounded" placeholder="Paste case context..."></textarea>
+<textarea id="input" rows="3" class="border p-3 flex-1 rounded" placeholder="Paste case logs or context..."></textarea>
 
 <button id="send" class="bg-indigo-600 text-white px-6 rounded">
 Generate
 </button>
+
+</div>
 
 </div>
 
@@ -100,45 +118,63 @@ const rules=`
 
 UNIVERSAL GUIDELINES
 
-Role: Senior Stripe Support Assistant
+Role:
+Senior Stripe Support Assistant.
 
 Tone:
 Professional
 Warm
 Simple English
 
+Empathy:
+Acknowledge user frustration when relevant.
+
 Privacy:
-Never expose PII
-Always use placeholders
+Never expose PII.
+
+Always use placeholders:
 [USER_NAME]
 [USER_EMAIL]
 [BUSINESS_NAME]
 
-Email drafts only when EO format selected.
+Email rule:
+Email drafts ONLY when EO format selected.
+
+Links:
+Use public Stripe documentation links.
+
+Sign-off:
+Best,
+[AGENT_NAME]
 
 `;
 
 const formats={
 
-EO:`Email Outline
+EO:`
+EMAIL OUTLINE FORMAT
+
 1 Summary
 2 Email Response
 3 Steps I took
 4 What response should include
 5 Already know
 6 Need to know
-7 What user must do
+7 What the user must do
 8 Links used
 9 DSAT Analysis
-10 Outcome summary
-11 Case status
+10 Outcome Summary
+11 Case Status
 12 Why case open
 13 Speculation
-14 Dissatisfaction trigger`,
+14 User dissatisfaction trigger
+`,
 
-CL:`Chat/RAC Notes
+CL:`
+CHAT / RAC NOTES FORMAT
+
 1 Checked related cases
-2 Read thread
+2 Read full thread
 3 Issue summary
 4 Steps taken
 5 Object IDs
@@ -147,15 +183,18 @@ CL:`Chat/RAC Notes
 8 Speculation
 9 Why case open
 10 Dissatisfaction trigger
-11 Docs`,
+11 Docs used
+`,
 
-INV:`Internal Note
+INV:`
+INTERNAL NOTE FORMAT
+
 1 Consent recorded
 2 Authentication method
 3 Account type
 4 Account ID
 5 Checked related cases
-6 Read thread
+6 Thread reviewed
 7 User concerns
 8 Topic
 9 Summary
@@ -164,9 +203,12 @@ INV:`Internal Note
 12 Why case open
 13 Speculation
 14 Dissatisfaction trigger
-15 Info reply must include`,
+15 Required reply info
+`,
 
-QS:`Quick Summary
+QS:`
+QUICK SUMMARY FORMAT
+
 1 Issue summary
 2 Case link
 3 Case ID
@@ -178,15 +220,19 @@ QS:`Quick Summary
 9 Relevant IDs
 10 Why case open
 11 Dissatisfaction trigger
-12 Sentiment`,
+12 Sentiment
+`,
 
-CF:`Consult Form
+CF:`
+CONSULT FORM FORMAT
+
 1 Consult team
 2 Ticket link
 3 Object IDs
 4 User issue summary
 5 Investigation
-6 Speculation`
+6 Speculation
+`
 
 }
 
@@ -228,11 +274,12 @@ document.getElementById("messages").innerHTML=""
 function addMessage(role,text){
 
 const box=document.createElement("div")
+
 box.className="bg-white p-4 rounded shadow"
 
 box.innerHTML=`
 <strong>${role==="user"?"You":"AI"}:</strong>
-<p class="mt-2 whitespace-pre-wrap">${text}</p>
+<pre class="mt-2 whitespace-pre-wrap">${text}</pre>
 <button class="text-xs text-indigo-600 mt-2 copy">Copy</button>
 `
 
@@ -252,22 +299,27 @@ const format=document.getElementById("format").value
 if(!input) return
 
 addMessage("user",input)
+
 document.getElementById("input").value=""
 
 const prompt=`
+
 ${rules}
 
 FORMAT RULES
+
 ${formats[format]}
 
-CONTEXT
+CASE CONTEXT
+
 ${input}
-`
+
+`;
 
 try{
 
 const res=await fetch(
-`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
+`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
 {
 method:"POST",
 headers:{"Content-Type":"application/json"},
@@ -279,14 +331,12 @@ contents:[{parts:[{text:prompt}]}]
 
 const data=await res.json()
 
-console.log(data)
-
 if(data.error){
 addMessage("assistant","API Error: "+data.error.message)
 return
 }
 
-let text="No response generated."
+let text="No response."
 
 if(data.candidates &&
 data.candidates[0] &&
