@@ -14,286 +14,343 @@
 <style>
 
 body{
-background:#f6f9fc;
 font-family:Inter,system-ui,sans-serif;
+background:#f6f9fc;
 }
 
-.markdown-body{
-font-size:14px;
-line-height:1.6;
-}
-
-.markdown-body p{
-margin-bottom:12px;
+.chat{
+max-height:60vh;
+overflow-y:auto;
 }
 
 </style>
-
-<!-- React -->
-<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-
-<!-- Babel (so JSX works) -->
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-<!-- Gemini SDK -->
-<script type="module">
-import {GoogleGenAI} from "https://esm.sh/@google/genai@1";
-window.GoogleGenAI = GoogleGenAI;
-</script>
 
 </head>
 
 <body>
 
-<div id="root"></div>
+<!-- LOGIN -->
 
-<script type="text/babel">
+<div id="login" class="min-h-screen flex items-center justify-center">
 
-const {useState,useEffect,useRef} = React;
+<div class="bg-white shadow-xl p-8 rounded-xl w-80 space-y-4">
 
-const FORMATS=[
-{id:"EO",name:"Email Outline"},
-{id:"CL",name:"Chat / RAC Notes"},
-{id:"INV",name:"Internal Notes"},
-{id:"QS",name:"Quick Summary"},
-{id:"CF",name:"Consult Form"}
-];
+<h1 class="text-xl font-bold text-center">
+Gee Support AI
+</h1>
 
-const UNIVERSAL_RULES=`
+<input id="name" class="border p-2 w-full rounded" placeholder="Your Name">
 
-You are a Senior Stripe Support Assistant.
+<input id="apikey" type="password" class="border p-2 w-full rounded" placeholder="Gemini API Key">
 
-Rules:
+<button id="loginBtn" class="bg-indigo-600 text-white w-full py-2 rounded">
+Login
+</button>
 
-- Professional tone
-- Simple English
-- Never expose PII
-- Always use placeholders [USER_NAME], [USER_EMAIL], [BUSINESS_NAME]
+</div>
+
+</div>
+
+
+<!-- APP -->
+
+<div id="app" class="hidden max-w-5xl mx-auto p-6">
+
+<div class="flex justify-between mb-6">
+
+<h1 class="text-xl font-bold">Gee Support AI</h1>
+
+<div class="flex gap-3">
+
+<button id="clear" class="text-gray-500">Clear</button>
+<button id="logout" class="text-red-500">Logout</button>
+
+</div>
+
+</div>
+
+<select id="format" class="border p-2 mb-4 rounded">
+
+<option value="EO">Email Outline</option>
+<option value="CL">Chat / RAC Notes</option>
+<option value="INV">Internal Notes</option>
+<option value="QS">Quick Summary</option>
+<option value="CF">Consult Form</option>
+
+</select>
+
+<div id="messages" class="chat space-y-4 mb-6"></div>
+
+<div class="flex gap-2">
+
+<textarea id="input" rows="3" class="border p-3 flex-1 rounded" placeholder="Paste case context..."></textarea>
+
+<button id="send" class="bg-indigo-600 text-white px-6 rounded">
+Generate
+</button>
+
+</div>
+
+</div>
+
+
+<script>
+
+let apiKey=""
+let agentName=""
+
+const rules=`
+
+UNIVERSAL GUIDELINES
+
+Role: Senior Stripe Support Assistant
+
+Tone:
+Professional
+Warm
+Simple English
+
+Privacy:
+Never expose PII
+Always use placeholders
+[USER_NAME]
+[USER_EMAIL]
+[BUSINESS_NAME]
+
+Email Rules:
+Email drafts only when EO format selected.
+
+Links:
+Use clickable public Stripe documentation links when possible.
 
 `;
 
-function App(){
+const formats={
 
-const [input,setInput]=useState("");
-const [messages,setMessages]=useState([]);
-const [loading,setLoading]=useState(false);
+EO:`
+EMAIL OUTLINE FORMAT
 
-const [apiKey,setApiKey]=useState("");
-const [name,setName]=useState("");
-const [logged,setLogged]=useState(false);
+1 Summary
+2 Email Response
+3 Steps I took
+4 What the response should include
+5 Already know
+6 Need to know
+7 What the user needs to do
+8 Links used
+9 DSAT Analysis
+10 Outcome Summary
+11 Case Status
+12 Why case open
+13 Speculation
+14 User dissatisfaction trigger
+`,
 
-const [format,setFormat]=useState("EO");
+CL:`
+CHAT / RAC NOTES FORMAT
 
-const endRef=useRef(null);
+1 Checked related cases
+2 Read entire thread
+3 Summary
+4 Steps taken
+5 Object IDs
+6 Final outcome
+7 Consult team
+8 Speculation
+9 Why case open
+10 User dissatisfaction trigger
+11 Relevant docs
+`,
 
-useEffect(()=>{
+INV:`
+INTERNAL NOTE FORMAT
 
-const savedKey=localStorage.getItem("gee_key");
-const savedName=localStorage.getItem("gee_name");
+1 Consent recorded
+2 Authentication method
+3 User account type
+4 User account ID
+5 Checked related cases
+6 Read thread
+7 User concerns
+8 Topic
+9 Summary
+10 Steps taken
+11 Final outcome
+12 Why case open
+13 Speculation
+14 User dissatisfaction trigger
+15 Info reply must include
+`,
 
-if(savedKey && savedName){
-setApiKey(savedKey);
-setName(savedName);
-setLogged(true);
+QS:`
+QUICK SUMMARY FORMAT
+
+1 Issue summary
+2 Case link
+3 Case ID
+4 Account ID
+5 Platform ID
+6 Connected account ID
+7 Speculation
+8 Stripe resources
+9 Relevant IDs
+10 Why case open
+11 User dissatisfaction trigger
+12 Sentiment
+`,
+
+CF:`
+CONSULT FORM FORMAT
+
+1 Consult team
+2 Ticket link
+3 Object IDs
+4 User issue summary
+5 Investigation
+6 Speculation
+`
+
 }
 
-},[]);
+function showLogin(){
 
-useEffect(()=>{
-endRef.current?.scrollIntoView({behavior:"smooth"});
-},[messages]);
-
-function login(e){
-
-e.preventDefault();
-
-if(!name.trim()){
-alert("Enter your name");
-return;
-}
-
-if(!apiKey.trim()){
-alert("Enter your API key");
-return;
-}
-
-localStorage.setItem("gee_key",apiKey);
-localStorage.setItem("gee_name",name);
-
-setLogged(true);
+document.getElementById("login").classList.remove("hidden")
+document.getElementById("app").classList.add("hidden")
 
 }
 
-function logout(){
+function showApp(){
 
-localStorage.removeItem("gee_key");
-localStorage.removeItem("gee_name");
+document.getElementById("login").classList.add("hidden")
+document.getElementById("app").classList.remove("hidden")
 
-setLogged(false);
+}
+
+document.getElementById("loginBtn").onclick=()=>{
+
+agentName=document.getElementById("name").value.trim()
+apiKey=document.getElementById("apikey").value.trim()
+
+if(!agentName){alert("Enter name");return}
+if(!apiKey){alert("Enter API key");return}
+
+localStorage.setItem("gee_name",agentName)
+localStorage.setItem("gee_key",apiKey)
+
+showApp()
+
+}
+
+document.getElementById("logout").onclick=()=>{
+
+localStorage.removeItem("gee_name")
+localStorage.removeItem("gee_key")
+
+showLogin()
+
+}
+
+document.getElementById("clear").onclick=()=>{
+
+document.getElementById("messages").innerHTML=""
+
+}
+
+function addMessage(role,text){
+
+const box=document.createElement("div")
+
+box.className="bg-white p-4 rounded shadow"
+
+box.innerHTML=`
+<strong>${role==="user"?"You":"AI"}:</strong>
+<p class="mt-2 whitespace-pre-wrap">${text}</p>
+<button class="text-xs text-indigo-600 mt-2 copy">Copy</button>
+`
+
+box.querySelector(".copy").onclick=()=>{
+
+navigator.clipboard.writeText(text)
+
+}
+
+document.getElementById("messages").appendChild(box)
 
 }
 
 async function generate(){
 
-if(!input.trim()) return;
+const input=document.getElementById("input").value.trim()
+const format=document.getElementById("format").value
 
-setLoading(true);
+if(!input) return
 
-const ai = new window.GoogleGenAI({apiKey});
+addMessage("user",input)
 
-const prompt = `
-${UNIVERSAL_RULES}
+document.getElementById("input").value=""
 
-Format: ${format}
+const prompt=`
 
-Context:
+${rules}
+
+FORMAT RULES
+
+${formats[format]}
+
+CONTEXT
+
 ${input}
+
 `;
 
 try{
 
-const res = await ai.models.generateContent({
-model:"gemini-1.5-flash",
-contents:[{role:"user",parts:[{text:prompt}]}]
-});
+const res=await fetch(
+`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+{
+method:"POST",
+headers:{"Content-Type":"application/json"},
+body:JSON.stringify({
+contents:[{parts:[{text:prompt}]}]
+})
+}
+)
 
-const text = res?.text || "No response.";
+const data=await res.json()
 
-setMessages(prev=>[
-...prev,
-{role:"user",content:input},
-{role:"assistant",content:text}
-]);
+let text="No response."
 
-setInput("");
+try{
+text=data.candidates[0].content.parts[0].text
+}catch{}
+
+addMessage("assistant",text)
 
 }catch(e){
 
-setMessages(prev=>[
-...prev,
-{role:"assistant",content:"Generation failed"}
-]);
+addMessage("assistant","Generation failed.")
 
 }
 
-setLoading(false);
-
 }
 
-if(!logged){
+document.getElementById("send").onclick=generate
 
-return(
+const savedName=localStorage.getItem("gee_name")
+const savedKey=localStorage.getItem("gee_key")
 
-<div className="min-h-screen flex items-center justify-center">
+if(savedName && savedKey){
 
-<form onSubmit={login} className="bg-white p-8 rounded-xl shadow w-80">
+agentName=savedName
+apiKey=savedKey
 
-<h1 className="text-xl font-bold mb-6 text-center">
-Gee Support AI
-</h1>
+showApp()
 
-<input
-className="border p-2 w-full mb-4"
-placeholder="Your Name"
-value={name}
-onChange={e=>setName(e.target.value)}
-/>
+}else{
 
-<input
-className="border p-2 w-full mb-4"
-placeholder="Gemini API Key"
-type="password"
-value={apiKey}
-onChange={e=>setApiKey(e.target.value)}
-/>
-
-<button className="bg-indigo-600 text-white w-full py-2 rounded">
-Login
-</button>
-
-</form>
-
-</div>
-
-)
+showLogin()
 
 }
-
-return(
-
-<div className="max-w-4xl mx-auto p-6">
-
-<div className="flex justify-between mb-6">
-
-<h1 className="text-xl font-bold">
-Gee Support AI
-</h1>
-
-<button onClick={logout} className="text-red-500">
-Logout
-</button>
-
-</div>
-
-<div className="mb-4">
-
-<select
-value={format}
-onChange={e=>setFormat(e.target.value)}
-className="border p-2"
->
-
-{FORMATS.map(f=>(
-<option key={f.id} value={f.id}>
-{f.name}
-</option>
-))}
-
-</select>
-
-</div>
-
-<div className="space-y-4">
-
-{messages.map((m,i)=>(
-<div key={i}>
-<strong>{m.role==="user"?"You":"AI"}:</strong>
-<p>{m.content}</p>
-</div>
-))}
-
-<div ref={endRef}></div>
-
-</div>
-
-<div className="mt-6 flex gap-2">
-
-<textarea
-className="border p-3 flex-1"
-rows="3"
-value={input}
-onChange={e=>setInput(e.target.value)}
-/>
-
-<button
-onClick={generate}
-className="bg-indigo-600 text-white px-6 rounded"
->
-
-{loading ? "Generating..." : "Send"}
-
-</button>
-
-</div>
-
-</div>
-
-)
-
-}
-
-ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 
 </script>
 
