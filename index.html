@@ -12,17 +12,14 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
 <style>
-
 body{
 font-family:Inter,system-ui,sans-serif;
 background:#f6f9fc;
 }
-
 .chat{
 max-height:60vh;
 overflow-y:auto;
 }
-
 </style>
 
 </head>
@@ -117,74 +114,59 @@ Always use placeholders
 [USER_EMAIL]
 [BUSINESS_NAME]
 
-Email Rules:
 Email drafts only when EO format selected.
-
-Links:
-Use clickable public Stripe documentation links when possible.
 
 `;
 
 const formats={
 
-EO:`
-EMAIL OUTLINE FORMAT
-
+EO:`Email Outline
 1 Summary
 2 Email Response
 3 Steps I took
-4 What the response should include
+4 What response should include
 5 Already know
 6 Need to know
-7 What the user needs to do
+7 What user must do
 8 Links used
 9 DSAT Analysis
-10 Outcome Summary
-11 Case Status
+10 Outcome summary
+11 Case status
 12 Why case open
 13 Speculation
-14 User dissatisfaction trigger
-`,
+14 Dissatisfaction trigger`,
 
-CL:`
-CHAT / RAC NOTES FORMAT
-
+CL:`Chat/RAC Notes
 1 Checked related cases
-2 Read entire thread
-3 Summary
+2 Read thread
+3 Issue summary
 4 Steps taken
 5 Object IDs
-6 Final outcome
+6 Outcome
 7 Consult team
 8 Speculation
 9 Why case open
-10 User dissatisfaction trigger
-11 Relevant docs
-`,
+10 Dissatisfaction trigger
+11 Docs`,
 
-INV:`
-INTERNAL NOTE FORMAT
-
+INV:`Internal Note
 1 Consent recorded
 2 Authentication method
-3 User account type
-4 User account ID
+3 Account type
+4 Account ID
 5 Checked related cases
 6 Read thread
 7 User concerns
 8 Topic
 9 Summary
 10 Steps taken
-11 Final outcome
+11 Outcome
 12 Why case open
 13 Speculation
-14 User dissatisfaction trigger
-15 Info reply must include
-`,
+14 Dissatisfaction trigger
+15 Info reply must include`,
 
-QS:`
-QUICK SUMMARY FORMAT
-
+QS:`Quick Summary
 1 Issue summary
 2 Case link
 3 Case ID
@@ -195,35 +177,27 @@ QUICK SUMMARY FORMAT
 8 Stripe resources
 9 Relevant IDs
 10 Why case open
-11 User dissatisfaction trigger
-12 Sentiment
-`,
+11 Dissatisfaction trigger
+12 Sentiment`,
 
-CF:`
-CONSULT FORM FORMAT
-
+CF:`Consult Form
 1 Consult team
 2 Ticket link
 3 Object IDs
 4 User issue summary
 5 Investigation
-6 Speculation
-`
+6 Speculation`
 
 }
 
 function showLogin(){
-
 document.getElementById("login").classList.remove("hidden")
 document.getElementById("app").classList.add("hidden")
-
 }
 
 function showApp(){
-
 document.getElementById("login").classList.add("hidden")
 document.getElementById("app").classList.remove("hidden")
-
 }
 
 document.getElementById("loginBtn").onclick=()=>{
@@ -242,24 +216,18 @@ showApp()
 }
 
 document.getElementById("logout").onclick=()=>{
-
 localStorage.removeItem("gee_name")
 localStorage.removeItem("gee_key")
-
 showLogin()
-
 }
 
 document.getElementById("clear").onclick=()=>{
-
 document.getElementById("messages").innerHTML=""
-
 }
 
 function addMessage(role,text){
 
 const box=document.createElement("div")
-
 box.className="bg-white p-4 rounded shadow"
 
 box.innerHTML=`
@@ -269,9 +237,7 @@ box.innerHTML=`
 `
 
 box.querySelector(".copy").onclick=()=>{
-
 navigator.clipboard.writeText(text)
-
 }
 
 document.getElementById("messages").appendChild(box)
@@ -286,27 +252,22 @@ const format=document.getElementById("format").value
 if(!input) return
 
 addMessage("user",input)
-
 document.getElementById("input").value=""
 
 const prompt=`
-
 ${rules}
 
 FORMAT RULES
-
 ${formats[format]}
 
 CONTEXT
-
 ${input}
-
-`;
+`
 
 try{
 
 const res=await fetch(
-`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`,
 {
 method:"POST",
 headers:{"Content-Type":"application/json"},
@@ -318,17 +279,29 @@ contents:[{parts:[{text:prompt}]}]
 
 const data=await res.json()
 
-let text="No response."
+console.log(data)
 
-try{
+if(data.error){
+addMessage("assistant","API Error: "+data.error.message)
+return
+}
+
+let text="No response generated."
+
+if(data.candidates &&
+data.candidates[0] &&
+data.candidates[0].content &&
+data.candidates[0].content.parts){
+
 text=data.candidates[0].content.parts[0].text
-}catch{}
+
+}
 
 addMessage("assistant",text)
 
 }catch(e){
 
-addMessage("assistant","Generation failed.")
+addMessage("assistant","Network error or invalid API key.")
 
 }
 
@@ -343,7 +316,6 @@ if(savedName && savedKey){
 
 agentName=savedName
 apiKey=savedKey
-
 showApp()
 
 }else{
