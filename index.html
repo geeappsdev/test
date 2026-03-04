@@ -4,339 +4,282 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gee Support Assistant</title>
-
 <script src="https://cdn.tailwindcss.com"></script>
-
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-
-<style>
-body{
-font-family:Inter,system-ui;
-background:#f6f9fc;
-color:#0a2540;
+<script>
+tailwind.config = {
+theme: {
+extend: {
+colors: {
+'stripe-indigo': '#635bff',
+'stripe-dark': '#0a2540',
+'stripe-slate': '#425466',
+'stripe-bg': '#f6f9fc',
+},
+fontFamily: {
+sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+display: ['Space Grotesk', 'sans-serif'],
+mono: ['JetBrains Mono', 'monospace'],
+},
+screens: { 'xs': '480px' }
 }
-.markdown-body p{margin-bottom:1rem}
-.markdown-body ul{padding-left:1.25rem;list-style:disc;margin-bottom:1rem}
-.markdown-body ol{padding-left:1.25rem;list-style:decimal;margin-bottom:1rem}
-.markdown-body strong{font-weight:700}
+}
+}
+</script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+@layer base {
+body { background-color: #f6f9fc; color: #0a2540; -webkit-font-smoothing: antialiased; }
+}
+.markdown-body { font-size: 15px; line-height: 1.6; color: #425466; }
+.markdown-body p { margin-bottom: 1rem; }
+.markdown-body ul { list-style-type: disc; padding-left: 1.25rem; margin-bottom: 1rem; }
+.markdown-body h1, .markdown-body h2, .markdown-body h3 {
+font-family: "Space Grotesk", sans-serif; font-weight: 700; color: #0a2540;
+margin-top: 1.5rem; margin-bottom: 0.75rem;
+}
+.markdown-body strong { font-weight: 700; color: #0a2540; }
+.markdown-body a { color: #635bff; text-decoration: none; font-weight: 500; }
+.markdown-body a:hover { text-decoration: underline; }
+.markdown-body code {
+font-family: "JetBrains Mono", monospace; font-size: 0.85em;
+background: #f3f4f6; padding: 0.2em 0.4em; border-radius: 4px;
+}
+.scrollbar-hide::-webkit-scrollbar { display: none; }
 </style>
-
+</head>
+<body>
+<div id="root"></div>
+code
+Code
 <script type="importmap">
 {
-"imports":{
-"react":"https://esm.sh/react@19",
-"react-dom/client":"https://esm.sh/react-dom@19/client",
-"react-markdown":"https://esm.sh/react-markdown@10",
-"remark-gfm":"https://esm.sh/remark-gfm@4",
-"@google/genai":"https://esm.sh/@google/genai@1.29.0"
-}
+  "imports": {
+    "react": "https://esm.sh/react@19.0.0",
+    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
+    "lucide-react": "https://esm.sh/lucide-react@0.475.0",
+    "motion/react": "https://esm.sh/motion@12.23.24/react",
+    "react-markdown": "https://esm.sh/react-markdown@10.1.0",
+    "remark-gfm": "https://esm.sh/remark-gfm@4.0.1",
+    "@google/genai": "https://esm.sh/@google/genai@1.29.0"
+  }
 }
 </script>
-</head>
-
-<body>
-
-<div id="root"></div>
 
 <script type="module">
-
-import React,{useState,useEffect,useRef} from "react"
-import {createRoot} from "react-dom/client"
-import ReactMarkdown from "react-markdown"
-import remarkGfm from "remark-gfm"
-import {GoogleGenAI} from "@google/genai"
-
-const FORMATS=[
-{id:"EO",name:"Email Outline"},
-{id:"CL",name:"CHAT/RAC notes"},
-{id:"INV",name:"Internal Note"},
-{id:"QS",name:"Quick Summary"},
-{id:"CF",name:"Consult Form"}
-]
-
-const UNIVERSAL_RULES=`
-You are a Senior Stripe Support Assistant.
-
-Tone:
-Professional, warm, simple English.
-
-Rules:
-- Never expose PII
-- Always use placeholders [USER_NAME] [USER_EMAIL] [BUSINESS_NAME]
-- Email drafts only when EO format selected
-`
-
-function App(){
-
-const[input,setInput]=useState("")
-const[messages,setMessages]=useState([])
-const[loading,setLoading]=useState(false)
-const[selectedFormat,setSelectedFormat]=useState("EO")
-
-const[userName,setUserName]=useState("")
-const[userApiKey,setUserApiKey]=useState("")
-const[loggedIn,setLoggedIn]=useState(false)
-const[error,setError]=useState("")
-
-const messagesEndRef=useRef(null)
-
-useEffect(()=>{
-const n=localStorage.getItem("gee_name")
-const k=localStorage.getItem("gee_key")
-if(n&&k){
-setUserName(n)
-setUserApiKey(k)
-setLoggedIn(true)
-}
-},[])
-
-function handleLogin(e){
-
-e.preventDefault()
-
-if(!userName.trim()){
-setError("Enter your name")
-return
-}
-
-if(!userApiKey.startsWith("AIza")){
-setError("Invalid Gemini API key")
-return
-}
-
-localStorage.setItem("gee_name",userName)
-localStorage.setItem("gee_key",userApiKey)
-
-setLoggedIn(true)
-setError("")
-}
-
-function logout(){
-localStorage.clear()
-setLoggedIn(false)
-setMessages([])
-}
-
-async function generate(){
-
-if(!input.trim()||loading)return
-
-const userMsg={
-role:"user",
-content:input,
-timestamp:new Date()
-}
-
-setMessages(prev=>[...prev,userMsg])
-
-setLoading(true)
-setInput("")
-setError("")
-
-try{
-
-const ai=new GoogleGenAI({apiKey:userApiKey})
-
-const prompt=`
-${UNIVERSAL_RULES}
-
-FORMAT: ${selectedFormat}
-
-CASE CONTEXT:
-${input}
-`
-
-const response=await ai.models.generateContent({
-model:"gemini-2.5-flash",
-contents:[
-{
-role:"user",
-parts:[{text:prompt}]
-}
-],
-config:{
-temperature:0.4,
-topP:0.9,
-maxOutputTokens:4096
-}
-})
-
-const text=response?.text||
-response?.candidates?.[0]?.content?.parts?.[0]?.text
-
-if(!text){
-throw new Error("No response generated.")
-}
-
-const aiMsg={
-role:"assistant",
-content:text,
-timestamp:new Date()
-}
-
-setMessages(prev=>[...prev,aiMsg])
-
-}catch(err){
-
-console.error(err)
-setError(err.message||"Generation failed")
-
-}finally{
-setLoading(false)
-}
-
-}
-
-useEffect(()=>{
-messagesEndRef.current?.scrollIntoView({behavior:"smooth"})
-},[messages])
-
-if(!loggedIn){
-
-return(
-
-<div class="min-h-screen flex items-center justify-center">
-
-<form onSubmit={handleLogin} class="bg-white p-8 rounded-xl shadow w-80 space-y-4">
-
-<h1 class="text-xl font-bold text-center">
-Gee Support Assistant
-</h1>
-
-<input
-class="border p-2 w-full rounded"
-placeholder="Your Name"
-value={userName}
-onChange={e=>setUserName(e.target.value)}
-/>
-
-<input
-class="border p-2 w-full rounded"
-placeholder="Gemini API Key"
-type="password"
-value={userApiKey}
-onChange={e=>setUserApiKey(e.target.value)}
-/>
-
-{error && <p class="text-red-500 text-sm">{error}</p>}
-
-<button class="bg-indigo-600 text-white w-full py-2 rounded">
-Login
-</button>
-
-</form>
-
-</div>
-
-)
-
-}
-
-return(
-
-<div class="flex h-screen">
-
-<div class="w-60 bg-gray-900 text-white p-4">
-
-<h2 class="font-bold mb-4">Formats</h2>
-
-{FORMATS.map(f=>(
-
-<button
-key={f.id}
-onClick={()=>setSelectedFormat(f.id)}
-class={`block w-full text-left px-3 py-2 rounded mb-2 ${
-selectedFormat===f.id?"bg-indigo-600":"hover:bg-gray-700"
-}`}
->
-{f.name}
-</button>
-
-))}
-
-<hr class="my-4"/>
-
-<button
-onClick={()=>setMessages([])}
-class="text-sm text-gray-300 block mb-2"
->
-Clear Chat
-</button>
-
-<button
-onClick={logout}
-class="text-sm text-red-400"
->
-Logout
-</button>
-
-</div>
-
-<div class="flex-1 flex flex-col">
-
-<div class="flex-1 overflow-y-auto p-6 space-y-6">
-
-{messages.map((m,i)=>(
-<div key={i}>
-
-<b>{m.role==="user"?"You":"AI"}:</b>
-
-{m.role==="assistant"?(
-<div class="markdown-body">
-<ReactMarkdown remarkPlugins={[remarkGfm]}>
-{m.content}
-</ReactMarkdown>
-</div>
-):(
-<p>{m.content}</p>
-)}
-
-</div>
-))}
-
-{loading && <p>Generating response...</p>}
-
-{error && <p class="text-red-500">{error}</p>}
-
-<div ref={messagesEndRef}></div>
-
-</div>
-
-<div class="border-t p-4 flex gap-2">
-
-<textarea
-class="border flex-1 p-3 rounded"
-placeholder="Paste case logs here..."
-value={input}
-onChange={e=>setInput(e.target.value)}
-onKeyDown={e=>{
-if(e.key==="Enter"&&!e.shiftKey){
-e.preventDefault()
-generate()
-}
-}}
-/>
-
-<button
-onClick={generate}
-class="bg-indigo-600 text-white px-6 rounded"
->
-Generate
-</button>
-
-</div>
-
-</div>
-
-</div>
-
-)
-
-}
-
-createRoot(document.getElementById("root")).render(<App/>)
-
+    import React, { useState, useRef, useEffect } from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { 
+        Mail, MessageSquare, Search, FileText, Send, Loader2, AlertCircle,
+        ChevronRight, Sparkles, User, Bot, Copy, Trash2, Hash,
+        CreditCard, ShieldCheck, Zap, ListChecks, StickyNote, ExternalLink,
+        X, Globe, BookOpen, Layout, Menu, LogOut, Key, UserCircle
+    } from 'lucide-react';
+    import { motion, AnimatePresence } from 'motion/react';
+    import ReactMarkdown from 'react-markdown';
+    import remarkGfm from 'remark-gfm';
+    import { GoogleGenAI } from '@google/genai';
+
+    const FORMATS = [
+      { id: "EO", name: "Email Outline", icon: Mail, description: "Detailed outline with email response", placeholder: "Paste case logs or user emails..." },
+      { id: "CL", name: "CHAT/RAC notes", icon: ListChecks, description: "Notes for consultation", placeholder: "Paste internal notes..." },
+      { id: "INV", name: "Internal Note", icon: StickyNote, description: "Checklist with specific fields", placeholder: "Paste interaction details..." },
+      { id: "QS", name: "Quick Summary", icon: Zap, description: "Brief summary of key points", placeholder: "Paste context for summary..." },
+      { id: "CF", name: "Consult Form", icon: MessageSquare, description: "Formal request form", placeholder: "Paste details for consult..." },
+    ];
+
+    const RULES = `
+    Role: Senior Support Assistant. Tone: Professional, warm, human.
+    PII: NEVER use real names/emails/business names. Use [USER_NAME], [USER_EMAIL], [BUSINESS_NAME].
+    Links: Use clickable markdown links for Stripe docs/dashboard.
+    Sign-off: "Best, [AGENT_NAME]".
+    EO Format: Include Summary, Email Response (paragraphs only), Steps I took, Need to know, User actions.
+    CL Format: Include Summary, Steps, Object IDs, Speculation.
+    INV Format: Include Checklist, User-Account Type, Topic, Summary, Outcome.
+    QS Format: Executive summary, brevity, key insights.
+    CF Format: Ticket Link, Summary, Investigation, Speculation.
+    `;
+
+    function App() {
+      const [input, setInput] = useState("");
+      const [messages, setMessages] = useState([]);
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState("");
+      const [selectedFormat, setSelectedFormat] = useState("EO");
+      const [copiedId, setCopiedId] = useState(null);
+      const [history, setHistory] = useState([]);
+      const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+      const [isLoggedIn, setIsLoggedIn] = useState(false);
+      const [userName, setUserName] = useState("");
+      const [userApiKey, setUserApiKey] = useState("");
+      const [loginError, setLoginError] = useState("");
+
+      const messagesEndRef = useRef(null);
+
+      useEffect(() => {
+        const n = localStorage.getItem("gee_n");
+        const k = localStorage.getItem("gee_k");
+        if (n && k) { setUserName(n); setUserApiKey(k); setIsLoggedIn(true); }
+      }, []);
+
+      const handleLogin = (e) => {
+        e.preventDefault();
+        if (!userName.trim() || !userApiKey.trim()) { setLoginError("All fields required."); return; }
+        localStorage.setItem("gee_n", userName);
+        localStorage.setItem("gee_k", userApiKey);
+        setIsLoggedIn(true);
+      };
+
+      const handleLogout = () => {
+        localStorage.clear(); setIsLoggedIn(false); setUserApiKey(""); setMessages([]); setHistory([]);
+      };
+
+      const generateResponse = async () => {
+        if (!input.trim() || loading) return;
+        const userMsg = { id: Date.now().toString(), role: "user", content: input, format: selectedFormat, timestamp: new Date() };
+        setMessages(prev => [...prev, userMsg]);
+        const currentInput = input;
+        setInput("");
+        setLoading(true);
+        setError("");
+
+        try {
+          const ai = new GoogleGenAI({ apiKey: userApiKey });
+          const prompt = `${RULES.replace("[AGENT_NAME]", userName)}\nFormat: ${selectedFormat}\nContext:\n${currentInput}`;
+          const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            config: { systemInstruction: "Senior Support Assistant. Use placeholders for PII. Markdown links only." }
+          });
+          const text = response.text;
+          if (!text) throw new Error("No response.");
+          const botMsg = { id: (Date.now()+1).toString(), role: "assistant", content: text, format: selectedFormat, timestamp: new Date() };
+          setMessages(prev => [...prev, botMsg]);
+          setHistory(prev => [botMsg, ...prev].slice(0, 5));
+        } catch (err) {
+          setError(err.message || "Failed to generate.");
+        } finally { setLoading(false); }
+      };
+
+      useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
+
+      if (!isLoggedIn) {
+        return (
+          <div className="min-h-screen bg-stripe-bg flex items-center justify-center p-6 font-sans">
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md bg-white rounded-[2.5rem] shadow-2xl p-10 border border-gray-100">
+              <div className="text-center mb-10">
+                <div className="bg-stripe-indigo p-4 rounded-3xl w-fit mx-auto mb-6 shadow-xl shadow-stripe-indigo/20"><Bot className="w-10 h-10 text-white" /></div>
+                <h1 className="font-display font-bold text-3xl text-stripe-dark mb-2">Gee Assistant</h1>
+                <p className="text-stripe-slate text-sm opacity-60">Secure agent login</p>
+              </div>
+              <form onSubmit={handleLogin} className="space-y-6">
+                <input type="text" value={userName} onChange={e => setUserName(e.target.value)} className="w-full bg-stripe-bg border border-gray-100 rounded-2xl py-4 px-6 text-sm outline-none focus:ring-4 focus:ring-stripe-indigo/5" placeholder="Your Name" />
+                <input type="password" value={userApiKey} onChange={e => setUserApiKey(e.target.value)} className="w-full bg-stripe-bg border border-gray-100 rounded-2xl py-4 px-6 text-sm outline-none focus:ring-4 focus:ring-stripe-indigo/5" placeholder="Gemini API Key" />
+                {loginError && <p className="text-red-500 text-xs font-bold text-center">{loginError}</p>}
+                <button type="submit" className="w-full bg-stripe-indigo text-white font-bold py-4 rounded-2xl shadow-lg hover:scale-[1.02] transition-all">Get Started</button>
+              </form>
+            </motion.div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="flex h-screen bg-stripe-bg font-sans overflow-hidden relative">
+          <AnimatePresence>
+            {isSidebarOpen && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 bg-stripe-dark/60 backdrop-blur-sm z-30 lg:hidden" />}
+          </AnimatePresence>
+
+          <div className={`fixed inset-y-0 left-0 w-72 bg-stripe-dark text-white flex flex-col z-40 transition-transform lg:relative lg:translate-x-0 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+            <div className="p-6 border-b border-white/5 flex items-center justify-between">
+              <div className="flex items-center gap-3"><CreditCard className="w-5 h-5 text-stripe-indigo" /><h1 className="font-display font-bold text-xl">Gee Support</h1></div>
+              <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="flex-1 py-6 overflow-y-auto scrollbar-hide px-3 space-y-1">
+              {FORMATS.map(f => (
+                <button key={f.id} onClick={() => setSelectedFormat(f.id)} className={`flex items-center gap-3 w-full px-4 py-3 rounded-xl transition-all ${selectedFormat === f.id ? "bg-stripe-indigo shadow-lg" : "opacity-50 hover:opacity-100 hover:bg-white/5"}`}>
+                  <f.icon className="w-4 h-4" /><span className="text-sm font-bold">{f.name}</span>
+                </button>
+              ))}
+              {history.length > 0 && (
+                <div className="pt-8 px-3">
+                  <p className="text-[10px] font-bold opacity-30 uppercase tracking-widest mb-4">Recent</p>
+                  {history.map(h => (
+                    <button key={h.id} onClick={() => setMessages([h])} className="w-full text-left p-2 text-xs opacity-40 hover:opacity-100 truncate block">{h.content.substring(0, 30)}...</button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="p-6 border-t border-white/5 space-y-3">
+              <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-red-500/20 text-red-400 text-xs font-bold hover:bg-red-500/10 transition-all"><LogOut className="w-3.5 h-3.5" /> Logout</button>
+            </div>
+          </div>
+
+          <div className="flex-1 flex flex-col min-w-0 bg-white">
+            <header className="h-[72px] border-b border-gray-100 flex items-center justify-between px-6 sticky top-0 bg-white/80 backdrop-blur-md z-10">
+              <div className="flex items-center gap-4">
+                <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2"><Menu className="w-5 h-5" /></button>
+                <h2 className="font-display font-bold text-stripe-dark">{FORMATS.find(f => f.id === selectedFormat)?.name}</h2>
+              </div>
+              <div className="flex items-center gap-2"><div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" /><span className="text-[10px] font-bold uppercase tracking-widest opacity-40">System Ready</span></div>
+            </header>
+
+            <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">
+              {messages.length === 0 && !loading && (
+                <div className="h-full flex flex-col items-center justify-center text-center opacity-40">
+                  <Bot className="w-16 h-16 mb-6 text-stripe-indigo" />
+                  <h3 className="text-2xl font-display font-bold mb-2">Ready to assist</h3>
+                  <p className="max-w-xs text-sm">Paste your case context below to generate documentation.</p>
+                </div>
+              )}
+              <div className="max-w-3xl mx-auto space-y-10 pb-32">
+                {messages.map(m => (
+                  <div key={m.id} className={`flex gap-4 ${m.role === 'user' ? 'opacity-60' : ''}`}>
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${m.role === 'user' ? 'bg-gray-100' : 'bg-stripe-indigo text-white shadow-lg'}`}>
+                      {m.role === 'user' ? <User className="w-5 h-5" /> : <Bot className="w-5 h-5" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs font-bold">{m.role === 'user' ? 'Agent' : 'Senior AI'}</span>
+                        <span className="text-[10px] opacity-30">{m.timestamp.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                      </div>
+                      <div className="markdown-body">
+                        {m.role === 'assistant' ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown> : <p className="whitespace-pre-wrap">{m.content}</p>}
+                      </div>
+                      {m.role === 'assistant' && (
+                        <button onClick={() => { navigator.clipboard.writeText(m.content); setCopiedId(m.id); setTimeout(()=>setCopiedId(null), 2000); }} className={`mt-4 flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${copiedId === m.id ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : 'bg-white border-gray-200 hover:bg-gray-50'}`}>
+                          {copiedId === m.id ? <ShieldCheck className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />} {copiedId === m.id ? 'Copied' : 'Copy Result'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {loading && <div className="flex items-center gap-3 opacity-40"><Loader2 className="w-4 h-4 animate-spin" /><span className="text-xs font-bold uppercase tracking-widest">Thinking...</span></div>}
+                {error && <div className="p-4 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-xs font-bold flex items-center gap-2"><AlertCircle className="w-4 h-4" /> {error}</div>}
+                <div ref={messagesEndRef} />
+              </div>
+            </div>
+
+            <div className="p-6 bg-gradient-to-t from-white via-white to-transparent">
+              <div className="max-w-3xl mx-auto relative group">
+                <div className="absolute -inset-1 bg-gradient-to-r from-stripe-indigo to-purple-600 rounded-[2rem] blur opacity-10 group-focus-within:opacity-20 transition" />
+                <div className="relative bg-white border border-gray-100 rounded-[1.5rem] shadow-2xl flex items-end p-2">
+                  <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); generateResponse(); } }} className="flex-1 bg-transparent border-none outline-none py-4 px-6 text-sm resize-none min-h-[60px] max-h-40 scrollbar-hide" placeholder={FORMATS.find(f => f.id === selectedFormat)?.placeholder} />
+                  <button onClick={generateResponse} disabled={loading || !input.trim()} className={`p-4 rounded-xl transition-all ${loading || !input.trim() ? 'opacity-20' : 'bg-stripe-indigo text-white shadow-lg shadow-stripe-indigo/20 hover:scale-105 active:scale-95'}`}><Send className="w-5 h-5" /></button>
+                </div>
+                <div className="flex items-center justify-between mt-4 px-4 opacity-30">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" /><span className="text-[9px] font-bold uppercase tracking-widest">Secure</span></div>
+                    <div className="flex items-center gap-1.5"><ShieldCheck className="w-3 h-3" /><span className="text-[9px] font-bold uppercase tracking-widest">PII Scrubbing</span></div>
+                  </div>
+                  <span className="text-[9px] font-bold uppercase tracking-widest">{userName}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    createRoot(document.getElementById('root')).render(<App />);
 </script>
-
 </body>
-</html>
+</html></html>
