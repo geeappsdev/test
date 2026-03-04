@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Gee Support Assistant</title>
+<title>Stripe Support Assistant</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
 tailwind.config = {
@@ -16,7 +16,7 @@ colors: {
 'stripe-bg': '#f6f9fc',
 },
 fontFamily: {
-sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+sans: ['Inter', 'system-ui', 'sans-serif'],
 display: ['Space Grotesk', 'sans-serif'],
 mono: ['JetBrains Mono', 'monospace'],
 },
@@ -27,16 +27,18 @@ screens: { 'xs': '480px' }
 </script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
 <style>
-@layer base {
 body { background-color: #f6f9fc; color: #0a2540; -webkit-font-smoothing: antialiased; }
-}
+/* Markdown Styles */
 .markdown-body { font-size: 15px; line-height: 1.6; color: #425466; }
 .markdown-body p { margin-bottom: 1rem; }
 .markdown-body ul { list-style-type: disc; padding-left: 1.25rem; margin-bottom: 1rem; }
+.markdown-body ol { list-style-type: decimal; padding-left: 1.25rem; margin-bottom: 1rem; }
 .markdown-body h1, .markdown-body h2, .markdown-body h3 {
 font-family: "Space Grotesk", sans-serif; font-weight: 700; color: #0a2540;
 margin-top: 1.5rem; margin-bottom: 0.75rem;
 }
+.markdown-body h1 { font-size: 1.25rem; }
+.markdown-body h2 { font-size: 1.1rem; }
 .markdown-body strong { font-weight: 700; color: #0a2540; }
 .markdown-body a { color: #635bff; text-decoration: none; font-weight: 500; }
 .markdown-body a:hover { text-decoration: underline; }
@@ -45,22 +47,33 @@ font-family: "JetBrains Mono", monospace; font-size: 0.85em;
 background: #f3f4f6; padding: 0.2em 0.4em; border-radius: 4px;
 }
 .scrollbar-hide::-webkit-scrollbar { display: none; }
+#error-display { display: none; position: fixed; top: 0; left: 0; width: 100%; background: #fee2e2; color: #991b1b; padding: 1rem; z-index: 9999; text-align: center; font-weight: bold; border-bottom: 1px solid #f87171; }
 </style>
 </head>
 <body>
+<div id="error-display"></div>
 <div id="root"></div>
 code
 Code
+<script>
+    window.onerror = function(message, source, lineno, colno, error) {
+        const display = document.getElementById('error-display');
+        display.style.display = 'block';
+        display.innerText = 'Application Error: ' + message + ' (Check console for details)';
+        console.error('Global Error:', error);
+    };
+</script>
+
 <script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@19.0.0",
-    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
-    "lucide-react": "https://esm.sh/lucide-react@0.475.0",
-    "motion/react": "https://esm.sh/motion@12.23.24/react",
-    "react-markdown": "https://esm.sh/react-markdown@10.1.0",
-    "remark-gfm": "https://esm.sh/remark-gfm@4.0.1",
-    "@google/genai": "https://esm.sh/@google/genai@1.29.0"
+    "react": "https://esm.sh/react@18.2.0",
+    "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+    "lucide-react": "https://esm.sh/lucide-react@0.294.0",
+    "framer-motion": "https://esm.sh/framer-motion@10.16.4",
+    "react-markdown": "https://esm.sh/react-markdown@9.0.1",
+    "remark-gfm": "https://esm.sh/remark-gfm@4.0.0",
+    "@google/genai": "https://esm.sh/@google/genai@0.1.1"
   }
 }
 </script>
@@ -69,36 +82,118 @@ Code
     import React, { useState, useRef, useEffect } from 'react';
     import { createRoot } from 'react-dom/client';
     import { 
-        Mail, MessageSquare, Search, FileText, Send, Loader2, AlertCircle,
+        Mail, MessageSquare, Send, Loader2, AlertCircle,
         ChevronRight, Sparkles, User, Bot, Copy, Trash2, Hash,
         CreditCard, ShieldCheck, Zap, ListChecks, StickyNote, ExternalLink,
-        X, Globe, BookOpen, Layout, Menu, LogOut, Key, UserCircle
+        X, BookOpen, Layout, Menu, LogOut, Key, UserCircle
     } from 'lucide-react';
-    import { motion, AnimatePresence } from 'motion/react';
+    import { motion, AnimatePresence } from 'framer-motion';
     import ReactMarkdown from 'react-markdown';
     import remarkGfm from 'remark-gfm';
     import { GoogleGenAI } from '@google/genai';
 
+    // --- CONFIGURATION ---
     const FORMATS = [
-      { id: "EO", name: "Email Outline", icon: Mail, description: "Detailed outline with email response", placeholder: "Paste case logs or user emails..." },
-      { id: "CL", name: "CHAT/RAC notes", icon: ListChecks, description: "Notes for consultation", placeholder: "Paste internal notes..." },
-      { id: "INV", name: "Internal Note", icon: StickyNote, description: "Checklist with specific fields", placeholder: "Paste interaction details..." },
-      { id: "QS", name: "Quick Summary", icon: Zap, description: "Brief summary of key points", placeholder: "Paste context for summary..." },
-      { id: "CF", name: "Consult Form", icon: MessageSquare, description: "Formal request form", placeholder: "Paste details for consult..." },
+      { id: "EO", name: "Email Outline", icon: Mail, description: "Full detailed outline with email response", placeholder: "Paste case logs or user emails here..." },
+      { id: "CL", name: "CHAT/RAC notes", icon: ListChecks, description: "Detailed notes for CHAT or RAC consultation", placeholder: "Paste internal notes or investigation details here..." },
+      { id: "INV", name: "Internal Note", icon: StickyNote, description: "Internal note checklist with specific fields", placeholder: "Paste full interaction details for internal note generation..." },
+      { id: "QS", name: "Quick Summary", icon: Zap, description: "Brief summary focused on key points", placeholder: "Paste context for a quick summary..." },
+      { id: "CF", name: "Consult Form", icon: MessageSquare, description: "Formal consultation request", placeholder: "Paste details for a consultation form..." },
     ];
 
-    const RULES = `
-    Role: Senior Support Assistant. Tone: Professional, warm, human.
-    PII: NEVER use real names/emails/business names. Use [USER_NAME], [USER_EMAIL], [BUSINESS_NAME].
-    Links: Use clickable markdown links for Stripe docs/dashboard.
-    Sign-off: "Best, [AGENT_NAME]".
-    EO Format: Include Summary, Email Response (paragraphs only), Steps I took, Need to know, User actions.
-    CL Format: Include Summary, Steps, Object IDs, Speculation.
-    INV Format: Include Checklist, User-Account Type, Topic, Summary, Outcome.
-    QS Format: Executive summary, brevity, key insights.
-    CF Format: Ticket Link, Summary, Investigation, Speculation.
+    const UNIVERSAL_RULES = `
+    UNIVERSAL GUIDELINES:
+    - Role: You are a Senior Support Assistant for a Stripe agent.
+    - Tone: Professional, warm, approachable, human. Use simple English.
+    - Empathy: Apply appropriate, sincere empathy and assurance. Acknowledge pain points.
+    - Positive Scripting: Use positive scripting. Never blame anyone. Avoid words like "unfortunately".
+    - PII & Privacy: NEVER mention the name of the user, their email, or their business name. ALWAYS use placeholders like [USER_NAME], [USER_EMAIL], or [BUSINESS_NAME] instead. This is a strict requirement.
+    - User Terms: Use "User" if they have a Stripe account and "End User" if they do not have.
+    - Formatting: Bold all section titles. Use paragraphs for user-facing content (avoid bullets/numbering in email bodies).
+    - Email Drafts: Do not include an email draft, email response, or "What can I tell the user" section unless the EO (Email Outline) format is specifically selected. The EO format is the only format that should contain a drafted email for the customer.
+    - Links: All links must be clickable, accurate, and publicly available Stripe resources (e.g., docs.stripe.com).
+    - Inline Links: You MUST proactively include clickable links directly within the text whenever a specific dashboard page (e.g., dashboard.stripe.com/payments/...) or documentation is relevant to a step or instruction. This is especially critical in the Email Response and "To do" sections.
+    - Missing Info: Use "NA" instead of "Not provided" for unavailable information.
+    - Proactivity: Never proactively mention instant payouts unless specifically relevant.
+    - Authentication: For authentication requests, explain it's needed to see account details for accurate assistance.
+    - Self-Service: Never suggest we'll make changes users can do themselves; emphasize self-service.
+    - Call Issues: When connection issues occur with calls, say "was not able to connect" rather than "system issue".
+    - No Website: For businesses without websites, emphasize social media as primary verification option.
+    - Sign-off: Always sign off emails with "Best, [AGENT_NAME]".
     `;
 
+    const FORMAT_PROMPTS = {
+      EO: `EO (Email Outline) FORMAT RULES:
+    1. **Summary**: Brief description of issue and resolution.
+    2. **Email Response**:
+       - Greeting: "Hi there," or personalized.
+       - Body: Simple English, paragraphs only (no bullets/numbers).
+       - Content: Sincere empathy, assurance, willingness to help. No internal departments.
+       - Closing: "Best, [AGENT_NAME]".
+    3. **Steps I took**: Detailed specific investigative actions (numbered list).
+    4. **What the response should include**: Key points to cover.
+    5. **Already know**: What the user already knows.
+    6. **Need to know**: What the user needs to know.
+    7. **What the user need to do**: Next actions for user.
+    8. **List of links used as references**: Clickable public Stripe links.
+    9. **DSAT Analysis**: Risk assessment and mitigation strategies.
+    10. **Outcome Summary**: Explaining resolution approach.
+    11. **Case Status**: (Open/Pending/Resolved).
+    12. **Why is the case open/pending**: Clear rationale.
+    13. **Speculation**: Analysis of possible resolution/underlying causes.
+    14. **What triggered the user's dissatisfaction and distress?**: Context.`,
+      CL: `CL (CHAT/RAC notes) FORMAT RULES:
+    1. **Have you checked all related cases?**: YES/NO/NA (Default: YES).
+    2. **Have you read through the entire thread?**: YES/NO/NA (Default: YES).
+    3. **Summary of the issue**: Brief but comprehensive description (2-3 sentences).
+    4. **Steps I took**: Numbered list of specific investigative actions (concise, one line each).
+    5. **Relevant object IDs**: Bulleted list of identifiers (Account IDs, Payment IDs, etc.).
+    6. **Final outcome**: Brief explanation of resolution or next steps.
+    7. **Consult**: Consult(Platinum/ALO/US/RISK) (Chat/RAC).
+    8. **Speculation**: Analysis of possible resolution.
+    9. **Why is the case open/pending**: Clear rationale.
+    10. **What triggered the user's dissatisfaction and distress?**: Context.
+    11. **Relevant documents**: Stripe publicly available documents.`,
+      INV: `INV (Internal Note) FORMAT RULES:
+    1. **Internal Note checklist**
+    2. **Consent to be recorded**: [YES/NO]
+    3. **Authentication/Verification PIN/PII?**: Always indicate verification method as PIN or PII (not YES/NO).
+    4. **User-Account Type**: Select one.
+    5. **User-Account ID**: acct_xxx / NA.
+    6. **Have you checked all related cases?**: [YES/NO] (Default: YES).
+    7. **Have you read through the entire thread?**: [YES/NO] (Default: YES).
+    8. **List all user's concerns/inquiries**
+    9. **Topic**: Select from standard topics.
+    10. **Summary of the issue**: Full summary.
+    11. **Steps I took**: Summarize investigative actions.
+    12. **Final Outcome**: Escalation / Resolution / Ask for information.
+    13. **Why is the case open/pending**: Clear rationale.
+    14. **Speculation**: Analysis based on the issue.
+    15. **What triggered the user's dissatisfaction and distress?**: Context.
+    16. **Information the reply must include**: Key points.`,
+      QS: `QS (Quick Summary) FORMAT RULES:
+    1. **Summary of the issue**: Analysis of the problem.
+    2. **Case link**: Admin link if applicable.
+    3. **Case ID**: ID if available.
+    4. **Account ID**: Based on account in question.
+    5. **User-Account ID Platform**: Platform ID or NA.
+    6. **User-Account ID Connected Account**: Connected account ID or NA.
+    7. **Speculation**: Analysis of possible resolution.
+    8. **Relevant Stripe resources**: Links to public docs, RPs, etc.
+    9. **Relevant IDs**: List of object IDs mentioned.
+    10. **Why is the case open/pending**: Clear rationale.
+    11. **What triggered the user's dissatisfaction and distress?**: Context.
+    12. **User Sentiment**: Assessment.`,
+      CF: `CF (Consult Form) FORMAT RULES:
+    1. **Consult(Platinum/ALO/US/RISK) (Chat/RAC)**
+    2. **Ticket Link**: https://admin.corp.stripe.com/case-studio?ticket_id=... (use mock if not provided).
+    3. **Object/Account ID(s)**: (Provided in prompt).
+    4. **User issue Summary**: Analysis (2-3 sentences).
+    5. **Your Investigation**: Analysis of checks performed (2-3 sentences).
+    6. **Speculation**: Analysis based on issue (2-3 sentences).`
+    };
+
+    // --- APP COMPONENT ---
     function App() {
       const [input, setInput] = useState("");
       const [messages, setMessages] = useState([]);
@@ -106,8 +201,12 @@ Code
       const [error, setError] = useState("");
       const [selectedFormat, setSelectedFormat] = useState("EO");
       const [copiedId, setCopiedId] = useState(null);
+      const [retryCountdown, setRetryCountdown] = useState(null);
+      const [pendingInput, setPendingInput] = useState(null);
+      const [showLibrary, setShowLibrary] = useState(false);
       const [history, setHistory] = useState([]);
       const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+      
       const [isLoggedIn, setIsLoggedIn] = useState(false);
       const [userName, setUserName] = useState("");
       const [userApiKey, setUserApiKey] = useState("");
@@ -116,161 +215,296 @@ Code
       const messagesEndRef = useRef(null);
 
       useEffect(() => {
-        const n = localStorage.getItem("gee_n");
-        const k = localStorage.getItem("gee_k");
-        if (n && k) { setUserName(n); setUserApiKey(k); setIsLoggedIn(true); }
+        try {
+            const savedName = localStorage.getItem("gee_agent_name");
+            const savedKey = localStorage.getItem("gee_agent_key");
+            if (savedName && savedKey) {
+              setUserName(savedName);
+              setUserApiKey(savedKey);
+              setIsLoggedIn(true);
+            }
+        } catch(e) { console.error("Storage error", e); }
       }, []);
 
       const handleLogin = (e) => {
         e.preventDefault();
-        if (!userName.trim() || !userApiKey.trim()) { setLoginError("All fields required."); return; }
-        localStorage.setItem("gee_n", userName);
-        localStorage.setItem("gee_k", userApiKey);
+        if (!userName.trim()) return setLoginError("Please enter your name.");
+        if (!userApiKey.trim()) return setLoginError("Please enter your Gemini API key.");
+        localStorage.setItem("gee_agent_name", userName);
+        localStorage.setItem("gee_agent_key", userApiKey);
         setIsLoggedIn(true);
+        setLoginError("");
       };
 
       const handleLogout = () => {
-        localStorage.clear(); setIsLoggedIn(false); setUserApiKey(""); setMessages([]); setHistory([]);
+        localStorage.removeItem("gee_agent_name");
+        localStorage.removeItem("gee_agent_key");
+        setIsLoggedIn(false);
+        setUserApiKey("");
+        setMessages([]);
+        setHistory([]);
       };
 
-      const generateResponse = async () => {
-        if (!input.trim() || loading) return;
-        const userMsg = { id: Date.now().toString(), role: "user", content: input, format: selectedFormat, timestamp: new Date() };
-        setMessages(prev => [...prev, userMsg]);
-        const currentInput = input;
-        setInput("");
+      useEffect(() => {
+        let timer;
+        if (retryCountdown !== null && retryCountdown > 0) {
+          timer = setTimeout(() => setRetryCountdown(retryCountdown - 1), 1000);
+        } else if (retryCountdown === 0 && pendingInput) {
+          const inputToRetry = pendingInput;
+          setPendingInput(null);
+          setRetryCountdown(null);
+          generateResponse(inputToRetry);
+        }
+        return () => clearTimeout(timer);
+      }, [retryCountdown, pendingInput]);
+
+      useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, [messages, loading]);
+
+      const generateResponse = async (overrideInput) => {
+        const currentInput = overrideInput || input;
+        if (!currentInput.trim() || loading) return;
+
+        const userMessage = {
+          id: Date.now().toString(),
+          role: "user",
+          content: currentInput,
+          format: selectedFormat,
+          timestamp: new Date(),
+        };
+
+        if (!overrideInput) {
+          setMessages((prev) => [...prev, userMessage]);
+          setInput("");
+        }
+        
         setLoading(true);
         setError("");
 
         try {
-          const ai = new GoogleGenAI({ apiKey: userApiKey });
-          const prompt = `${RULES.replace("[AGENT_NAME]", userName)}\nFormat: ${selectedFormat}\nContext:\n${currentInput}`;
-          const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            config: { systemInstruction: "Senior Support Assistant. Use placeholders for PII. Markdown links only." }
+          const currentAi = new GoogleGenAI({ apiKey: userApiKey });
+          const formatPrompt = FORMAT_PROMPTS[selectedFormat];
+          const rulesWithAgent = UNIVERSAL_RULES.replaceAll("[AGENT_NAME]", userName);
+          const promptWithAgent = formatPrompt.replaceAll("[AGENT_NAME]", userName);
+          const fullPrompt = `${rulesWithAgent}\n${promptWithAgent}\n\nCOMPREHENSIVE CASE CONTEXT:\n${currentInput}`;
+
+          const response = await currentAi.models.generateContent({
+            model: "gemini-1.5-flash", // Using stable model for broad compatibility
+            contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
+            config: {
+              systemInstruction: "You are a Senior Support Assistant. STRICT RULE: Never mention real names, emails, or business names. ALWAYS use placeholders like [USER_NAME], [USER_EMAIL], [BUSINESS_NAME]. All links must be clickable markdown links [text](url).",
+            }
           });
-          const text = response.text;
-          if (!text) throw new Error("No response.");
-          const botMsg = { id: (Date.now()+1).toString(), role: "assistant", content: text, format: selectedFormat, timestamp: new Date() };
-          setMessages(prev => [...prev, botMsg]);
-          setHistory(prev => [botMsg, ...prev].slice(0, 5));
+
+          const text = response.text(); // Note: SDK method call
+          if (!text) throw new Error("No response generated from AI.");
+
+          const assistantMessage = {
+            id: (Date.now() + 1).toString(),
+            role: "assistant",
+            content: text,
+            format: selectedFormat,
+            timestamp: new Date(),
+          };
+
+          setMessages((prev) => [...prev, assistantMessage]);
+          setHistory((prev) => [assistantMessage, ...prev].slice(0, 5));
         } catch (err) {
-          setError(err.message || "Failed to generate.");
-        } finally { setLoading(false); }
+          console.error("Generation error:", err);
+          const errStr = JSON.stringify(err);
+          if (err.message?.includes("429") || errStr.includes("429") || errStr.includes("RESOURCE_EXHAUSTED")) {
+            const match = err.message?.match(/retry in (\d+\.?\d*)s/);
+            const seconds = match ? Math.ceil(parseFloat(match[1])) : 15;
+            setError(`Quota exceeded. Automatically retrying in ${seconds}s...`);
+            setRetryCountdown(seconds);
+            setPendingInput(currentInput);
+          } else {
+            setError(err.message || "Request failed. Please check your API key and try again.");
+          }
+        } finally {
+          setLoading(false);
+        }
       };
 
-      useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
+      const copyToClipboard = (text, messageId) => {
+        navigator.clipboard.writeText(text);
+        setCopiedId(messageId);
+        setTimeout(() => setCopiedId(null), 2000);
+      };
 
+      // --- RENDER: LOGIN SCREEN ---
       if (!isLoggedIn) {
         return (
-          <div className="min-h-screen bg-stripe-bg flex items-center justify-center p-6 font-sans">
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md bg-white rounded-[2.5rem] shadow-2xl p-10 border border-gray-100">
-              <div className="text-center mb-10">
-                <div className="bg-stripe-indigo p-4 rounded-3xl w-fit mx-auto mb-6 shadow-xl shadow-stripe-indigo/20"><Bot className="w-10 h-10 text-white" /></div>
-                <h1 className="font-display font-bold text-3xl text-stripe-dark mb-2">Gee Assistant</h1>
-                <p className="text-stripe-slate text-sm opacity-60">Secure agent login</p>
+          <div className="min-h-screen bg-stripe-bg flex items-center justify-center p-4 sm:p-8 font-sans">
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md bg-white rounded-[2.5rem] shadow-2xl border border-gray-100 p-8 sm:p-12">
+              <div className="flex flex-col items-center text-center mb-10">
+                <div className="bg-stripe-indigo p-4 rounded-3xl shadow-xl shadow-stripe-indigo/20 mb-6"><Bot className="w-10 h-10 text-white" /></div>
+                <h1 className="font-display font-bold text-3xl text-stripe-dark tracking-tight mb-2">Welcome Back</h1>
+                <p className="text-stripe-slate text-sm opacity-60">Sign in to your support assistant</p>
               </div>
               <form onSubmit={handleLogin} className="space-y-6">
-                <input type="text" value={userName} onChange={e => setUserName(e.target.value)} className="w-full bg-stripe-bg border border-gray-100 rounded-2xl py-4 px-6 text-sm outline-none focus:ring-4 focus:ring-stripe-indigo/5" placeholder="Your Name" />
-                <input type="password" value={userApiKey} onChange={e => setUserApiKey(e.target.value)} className="w-full bg-stripe-bg border border-gray-100 rounded-2xl py-4 px-6 text-sm outline-none focus:ring-4 focus:ring-stripe-indigo/5" placeholder="Gemini API Key" />
-                {loginError && <p className="text-red-500 text-xs font-bold text-center">{loginError}</p>}
-                <button type="submit" className="w-full bg-stripe-indigo text-white font-bold py-4 rounded-2xl shadow-lg hover:scale-[1.02] transition-all">Get Started</button>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-stripe-slate uppercase tracking-widest ml-1">Your Name</label>
+                  <div className="relative group">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><UserCircle className="w-5 h-5 text-gray-300 group-focus-within:text-stripe-indigo transition-colors" /></div>
+                    <input type="text" value={userName} onChange={(e) => setUserName(e.target.value)} className="w-full bg-stripe-bg border border-gray-100 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium outline-none focus:border-stripe-indigo/50 focus:ring-4 focus:ring-stripe-indigo/5 transition-all" placeholder="e.g. Alex" />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-stripe-slate uppercase tracking-widest ml-1">Gemini API Key</label>
+                  <div className="relative group">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Key className="w-5 h-5 text-gray-300 group-focus-within:text-stripe-indigo transition-colors" /></div>
+                    <input type="password" value={userApiKey} onChange={(e) => setUserApiKey(e.target.value)} className="w-full bg-stripe-bg border border-gray-100 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium outline-none focus:border-stripe-indigo/50 focus:ring-4 focus:ring-stripe-indigo/5 transition-all" placeholder="AIzaSy..." />
+                  </div>
+                </div>
+                {loginError && <div className="flex items-center gap-2 p-4 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-xs font-bold"><AlertCircle className="w-4 h-4" />{loginError}</div>}
+                <button type="submit" className="w-full bg-stripe-indigo text-white font-bold py-4 rounded-2xl shadow-xl shadow-stripe-indigo/20 hover:bg-stripe-indigo/90 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2">Get Started <ChevronRight className="w-4 h-4" /></button>
               </form>
             </motion.div>
           </div>
         );
       }
 
+      // --- RENDER: MAIN APP ---
       return (
-        <div className="flex h-screen bg-stripe-bg font-sans overflow-hidden relative">
+        <div className="flex h-screen bg-stripe-bg font-sans overflow-hidden text-stripe-dark relative">
           <AnimatePresence>
             {isSidebarOpen && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 bg-stripe-dark/60 backdrop-blur-sm z-30 lg:hidden" />}
           </AnimatePresence>
 
-          <div className={`fixed inset-y-0 left-0 w-72 bg-stripe-dark text-white flex flex-col z-40 transition-transform lg:relative lg:translate-x-0 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
+          <div className={`fixed inset-y-0 left-0 w-72 bg-stripe-dark text-white flex flex-col shrink-0 z-40 shadow-2xl transition-transform duration-300 lg:relative lg:translate-x-0 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
             <div className="p-6 border-b border-white/5 flex items-center justify-between">
-              <div className="flex items-center gap-3"><CreditCard className="w-5 h-5 text-stripe-indigo" /><h1 className="font-display font-bold text-xl">Gee Support</h1></div>
-              <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden"><X className="w-5 h-5" /></button>
+              <div className="flex items-center gap-3"><div className="bg-stripe-indigo p-2 rounded-xl shadow-lg shadow-stripe-indigo/20"><CreditCard className="w-5 h-5 text-white" /></div><h1 className="font-display font-bold text-xl tracking-tight">Gee Support</h1></div>
+              <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden p-2 hover:bg-white/5 rounded-lg text-white/50 hover:text-white transition-colors"><X className="w-5 h-5" /></button>
             </div>
-            <div className="flex-1 py-6 overflow-y-auto scrollbar-hide px-3 space-y-1">
-              {FORMATS.map(f => (
-                <button key={f.id} onClick={() => setSelectedFormat(f.id)} className={`flex items-center gap-3 w-full px-4 py-3 rounded-xl transition-all ${selectedFormat === f.id ? "bg-stripe-indigo shadow-lg" : "opacity-50 hover:opacity-100 hover:bg-white/5"}`}>
-                  <f.icon className="w-4 h-4" /><span className="text-sm font-bold">{f.name}</span>
-                </button>
-              ))}
+            <div className="px-6 py-4 border-b border-white/5">
+              <div className="flex items-center gap-3 p-3 rounded-2xl bg-white/5 border border-white/10">
+                <div className="w-10 h-10 rounded-xl bg-stripe-indigo flex items-center justify-center text-sm font-bold shadow-lg">{userName.charAt(0).toUpperCase()}</div>
+                <div className="flex-1 min-w-0"><p className="text-xs font-bold truncate">{userName}</p><p className="text-[10px] text-white/40 uppercase tracking-widest font-bold">Support Agent</p></div>
+                <button onClick={handleLogout} className="p-2 hover:bg-white/10 rounded-lg text-white/40 hover:text-white transition-colors" title="Disconnect API"><LogOut className="w-4 h-4" /></button>
+              </div>
+            </div>
+            <div className="flex-1 py-8 overflow-y-auto scrollbar-hide">
+              <div className="px-6 mb-4"><span className="text-[10px] font-bold opacity-30 uppercase tracking-[0.2em] text-white">Generation Formats</span></div>
+              <div className="space-y-1 px-3">
+                {FORMATS.map((f) => (
+                  <button key={f.id} onClick={() => setSelectedFormat(f.id)} className={`flex items-center gap-3 w-full text-left px-4 py-3 rounded-xl transition-all duration-300 group ${selectedFormat === f.id ? "bg-stripe-indigo text-white shadow-xl shadow-stripe-indigo/30" : "text-white/50 hover:text-white hover:bg-white/5"}`}>
+                    <div className={`p-1.5 rounded-lg transition-colors ${selectedFormat === f.id ? "bg-white/20" : "bg-white/5 group-hover:bg-white/10"}`}><f.icon className="w-4 h-4" /></div>
+                    <div className="min-w-0"><p className="text-sm font-bold truncate">{f.name}</p><p className={`text-[10px] truncate transition-opacity ${selectedFormat === f.id ? "opacity-70" : "opacity-0 group-hover:opacity-40"}`}>{f.description}</p></div>
+                  </button>
+                ))}
+              </div>
               {history.length > 0 && (
-                <div className="pt-8 px-3">
-                  <p className="text-[10px] font-bold opacity-30 uppercase tracking-widest mb-4">Recent</p>
-                  {history.map(h => (
-                    <button key={h.id} onClick={() => setMessages([h])} className="w-full text-left p-2 text-xs opacity-40 hover:opacity-100 truncate block">{h.content.substring(0, 30)}...</button>
+                <><div className="mt-12 px-6 mb-4"><span className="text-[10px] font-bold opacity-30 uppercase tracking-[0.2em] text-white">Recent History</span></div>
+                <div className="space-y-1 px-3">
+                  {history.map((h) => (
+                    <button key={h.id} onClick={() => setMessages([h])} className="flex items-center gap-3 w-full text-left px-4 py-2.5 text-white/40 hover:text-white/80 hover:bg-white/5 rounded-xl transition-all group">
+                      <FileText className="w-3.5 h-3.5 opacity-40 group-hover:opacity-100" /><span className="text-xs font-medium truncate">{h.content.substring(0, 30)}...</span>
+                    </button>
                   ))}
-                </div>
+                </div></>
               )}
-            </div>
-            <div className="p-6 border-t border-white/5 space-y-3">
-              <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-red-500/20 text-red-400 text-xs font-bold hover:bg-red-500/10 transition-all"><LogOut className="w-3.5 h-3.5" /> Logout</button>
             </div>
           </div>
 
-          <div className="flex-1 flex flex-col min-w-0 bg-white">
-            <header className="h-[72px] border-b border-gray-100 flex items-center justify-between px-6 sticky top-0 bg-white/80 backdrop-blur-md z-10">
-              <div className="flex items-center gap-4">
-                <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2"><Menu className="w-5 h-5" /></button>
-                <h2 className="font-display font-bold text-stripe-dark">{FORMATS.find(f => f.id === selectedFormat)?.name}</h2>
+          <div className="flex-1 flex flex-col min-w-0 relative bg-white">
+            <header className="h-[72px] border-b border-gray-100 flex items-center justify-between px-4 lg:px-8 shrink-0 z-10 bg-white/80 backdrop-blur-xl sticky top-0">
+              <div className="flex items-center gap-3 lg:gap-4">
+                <button onClick={() => setIsSidebarOpen(true)} className="lg:hidden p-2 hover:bg-gray-50 rounded-xl text-stripe-slate border border-transparent hover:border-gray-100 transition-all"><Menu className="w-5 h-5" /></button>
+                <div className="hidden sm:block bg-stripe-bg p-2 rounded-xl border border-gray-100 shadow-sm"><Hash className="w-4 h-4 text-stripe-slate" /></div>
+                <div><h2 className="font-display font-bold text-sm lg:text-base text-stripe-dark leading-none mb-1 truncate max-w-[120px] sm:max-w-none">{FORMATS.find(f => f.id === selectedFormat)?.name}</h2><div className="flex items-center gap-2"><div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" /><span className="text-[9px] lg:text-[10px] text-stripe-slate font-bold uppercase tracking-widest opacity-60">Ready</span></div></div>
               </div>
-              <div className="flex items-center gap-2"><div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" /><span className="text-[10px] font-bold uppercase tracking-widest opacity-40">System Ready</span></div>
+              <div className="flex items-center gap-2 lg:gap-4">
+                <div className="relative">
+                  <button onClick={() => setShowLibrary(!showLibrary)} className={`p-2 rounded-xl transition-all duration-300 ${showLibrary ? "bg-stripe-indigo text-white shadow-lg shadow-stripe-indigo/20" : "hover:bg-gray-50 text-stripe-slate border border-transparent hover:border-gray-100"}`}><ExternalLink className="w-4.5 h-4.5" /></button>
+                  <AnimatePresence>
+                    {showLibrary && (
+                      <motion.div initial={{ opacity: 0, y: 15, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 15, scale: 0.95 }} className="absolute right-0 mt-3 w-72 sm:w-80 bg-white rounded-3xl shadow-2xl border border-gray-100 p-4 sm:p-6 z-50 overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-1 bg-stripe-indigo" />
+                        <div className="flex items-center justify-between mb-6"><h3 className="text-[10px] font-bold text-stripe-slate uppercase tracking-[0.2em] opacity-50">Link Library</h3><button onClick={() => setShowLibrary(false)} className="text-gray-300 hover:text-stripe-dark transition-colors"><X className="w-4 h-4" /></button></div>
+                        <div className="space-y-4">
+                          <a href="https://docs.stripe.com" target="_blank" className="flex items-center gap-4 p-3 rounded-2xl hover:bg-stripe-bg transition-all group border border-transparent hover:border-gray-100"><div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform"><BookOpen className="w-5 h-5 text-emerald-600" /></div><div className="min-w-0"><p className="text-xs font-bold text-stripe-dark">Documentation</p><p className="text-[10px] text-stripe-slate opacity-60 truncate">docs.stripe.com</p></div></a>
+                          <a href="https://dashboard.stripe.com" target="_blank" className="flex items-center gap-4 p-3 rounded-2xl hover:bg-stripe-bg transition-all group border border-transparent hover:border-gray-100"><div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform"><Layout className="w-5 h-5 text-indigo-600" /></div><div className="min-w-0"><p className="text-xs font-bold text-stripe-dark">Dashboard</p><p className="text-[10px] text-stripe-slate opacity-60 truncate">dashboard.stripe.com</p></div></a>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </div>
             </header>
 
-            <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">
+            <div className="flex-1 overflow-y-auto scroll-smooth bg-white scrollbar-hide">
               {messages.length === 0 && !loading && (
-                <div className="h-full flex flex-col items-center justify-center text-center opacity-40">
-                  <Bot className="w-16 h-16 mb-6 text-stripe-indigo" />
-                  <h3 className="text-2xl font-display font-bold mb-2">Ready to assist</h3>
-                  <p className="max-w-xs text-sm">Paste your case context below to generate documentation.</p>
+                <div className="p-6 sm:p-12 lg:p-16 max-w-4xl mx-auto">
+                  <div className="flex flex-col items-center text-center mb-12 sm:mb-16">
+                    <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="w-16 h-16 sm:w-20 sm:h-20 rounded-[2rem] sm:rounded-[2.5rem] bg-stripe-indigo flex items-center justify-center mb-6 sm:mb-8 shadow-2xl shadow-stripe-indigo/30"><Bot className="w-8 h-8 sm:w-10 sm:h-10 text-white" /></motion.div>
+                    <h2 className="font-display font-bold text-2xl sm:text-4xl text-stripe-dark mb-4 tracking-tight">What are we building today?</h2>
+                    <p className="text-stripe-slate text-sm sm:text-lg max-w-xl leading-relaxed opacity-70">Select a format from the sidebar and provide the case context.</p>
+                  </div>
                 </div>
               )}
-              <div className="max-w-3xl mx-auto space-y-10 pb-32">
-                {messages.map(m => (
-                  <div key={m.id} className={`flex gap-4 ${m.role === 'user' ? 'opacity-60' : ''}`}>
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${m.role === 'user' ? 'bg-gray-100' : 'bg-stripe-indigo text-white shadow-lg'}`}>
-                      {m.role === 'user' ? <User className="w-5 h-5" /> : <Bot className="w-5 h-5" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-xs font-bold">{m.role === 'user' ? 'Agent' : 'Senior AI'}</span>
-                        <span className="text-[10px] opacity-30">{m.timestamp.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+
+              <div className="max-w-4xl mx-auto pb-40">
+                <AnimatePresence initial={false}>
+                  {messages.map((message) => (
+                    <motion.div key={message.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className={`group flex items-start gap-4 sm:gap-6 px-4 sm:px-8 py-8 sm:py-10 border-b border-gray-50 transition-colors ${message.role === "assistant" ? "bg-white" : "bg-stripe-bg/30"}`}>
+                      <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl shrink-0 flex items-center justify-center shadow-sm border ${message.role === "user" ? "bg-white border-gray-100" : "bg-stripe-indigo border-stripe-indigo shadow-lg shadow-stripe-indigo/20"}`}>
+                        {message.role === "user" ? <User className="w-5 h-5 sm:w-6 sm:h-6 text-stripe-slate" /> : <Bot className="w-5 h-5 sm:w-6 sm:h-6 text-white" />}
                       </div>
-                      <div className="markdown-body">
-                        {m.role === 'assistant' ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown> : <p className="whitespace-pre-wrap">{m.content}</p>}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+                          <span className="font-display font-bold text-xs sm:text-sm text-stripe-dark tracking-tight">{message.role === "user" ? "Support Agent" : "Gee's Senior AI"}</span>
+                          <div className="w-1 h-1 bg-gray-200 rounded-full" />
+                          <span className="text-[10px] sm:text-[11px] font-bold text-stripe-slate opacity-40 uppercase tracking-widest">{message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                        <div className="text-[14px] sm:text-[15px] leading-relaxed">
+                          {message.role === "assistant" ? <div className="markdown-body prose prose-sm max-w-none"><ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown></div> : <p className="whitespace-pre-wrap font-medium text-stripe-slate">{message.content}</p>}
+                        </div>
+                        {message.role === "assistant" && (
+                          <div className="mt-6 sm:mt-8 flex flex-wrap items-center gap-2 sm:gap-3">
+                            <button onClick={() => copyToClipboard(message.content, message.id)} className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 border rounded-xl text-[10px] sm:text-xs font-bold shadow-sm transition-all ${copiedId === message.id ? "bg-emerald-50 border-emerald-200 text-emerald-600" : "bg-white border-gray-200 text-stripe-slate hover:bg-gray-50 hover:border-gray-300"}`}>
+                              {copiedId === message.id ? <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Copy className="w-3.5 h-3.5 sm:w-4 sm:h-4" />} {copiedId === message.id ? "Copied" : `Copy Result`}
+                            </button>
+                          </div>
+                        )}
                       </div>
-                      {m.role === 'assistant' && (
-                        <button onClick={() => { navigator.clipboard.writeText(m.content); setCopiedId(m.id); setTimeout(()=>setCopiedId(null), 2000); }} className={`mt-4 flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${copiedId === m.id ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : 'bg-white border-gray-200 hover:bg-gray-50'}`}>
-                          {copiedId === m.id ? <ShieldCheck className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />} {copiedId === m.id ? 'Copied' : 'Copy Result'}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {loading && <div className="flex items-center gap-3 opacity-40"><Loader2 className="w-4 h-4 animate-spin" /><span className="text-xs font-bold uppercase tracking-widest">Thinking...</span></div>}
-                {error && <div className="p-4 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-xs font-bold flex items-center gap-2"><AlertCircle className="w-4 h-4" /> {error}</div>}
-                <div ref={messagesEndRef} />
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
               </div>
+
+              {loading && (
+                <div className="max-w-4xl mx-auto w-full"><div className="flex items-start gap-6 px-8 py-10"><div className="w-12 h-12 rounded-2xl bg-stripe-indigo flex items-center justify-center shrink-0 shadow-lg shadow-stripe-indigo/20"><Bot className="w-6 h-6 text-white" /></div><div className="flex-1"><div className="flex items-center gap-3 mb-4"><span className="font-display font-bold text-sm text-stripe-dark tracking-tight">Gee's Senior AI</span><div className="w-1 h-1 bg-gray-200 rounded-full" /><span className="text-[11px] font-bold text-stripe-slate opacity-40 uppercase tracking-widest italic">generating {selectedFormat}...</span></div><div className="flex gap-2 mt-4"><motion.div animate={{ opacity: [0.3, 1, 0.3], scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 1 }} className="w-2.5 h-2.5 bg-stripe-indigo/40 rounded-full" /><motion.div animate={{ opacity: [0.3, 1, 0.3], scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 1, delay: 0.2 }} className="w-2.5 h-2.5 bg-stripe-indigo/40 rounded-full" /><motion.div animate={{ opacity: [0.3, 1, 0.3], scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 1, delay: 0.4 }} className="w-2.5 h-2.5 bg-stripe-indigo/40 rounded-full" /></div></div></div></div>
+              )}
+
+              {error && (
+                <div className="px-8 py-6 max-w-4xl mx-auto w-full"><div className="bg-red-50 border border-red-100 text-red-700 p-6 rounded-[2rem] flex flex-col gap-4 shadow-sm"><div className="flex items-center gap-3 font-display font-bold text-base"><AlertCircle className="w-5 h-5" />Generation Error</div><p className="text-sm opacity-90 leading-relaxed font-medium">{error}</p><div className="flex gap-3 mt-2">{retryCountdown !== null && <div className="flex items-center gap-2 px-4 py-2 bg-white/50 rounded-xl text-[11px] font-bold text-red-700"><Loader2 className="w-3.5 h-3.5 animate-spin" />Retrying in {retryCountdown}s</div>}<button onClick={handleLogout} className="px-4 py-2 bg-white border border-red-200 rounded-xl text-[11px] font-bold text-red-700 hover:bg-red-100 transition-all shadow-sm">Change API Key</button></div></div></div>
+              )}
+              <div ref={messagesEndRef} className="h-8" />
             </div>
 
-            <div className="p-6 bg-gradient-to-t from-white via-white to-transparent">
-              <div className="max-w-3xl mx-auto relative group">
-                <div className="absolute -inset-1 bg-gradient-to-r from-stripe-indigo to-purple-600 rounded-[2rem] blur opacity-10 group-focus-within:opacity-20 transition" />
-                <div className="relative bg-white border border-gray-100 rounded-[1.5rem] shadow-2xl flex items-end p-2">
-                  <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); generateResponse(); } }} className="flex-1 bg-transparent border-none outline-none py-4 px-6 text-sm resize-none min-h-[60px] max-h-40 scrollbar-hide" placeholder={FORMATS.find(f => f.id === selectedFormat)?.placeholder} />
-                  <button onClick={generateResponse} disabled={loading || !input.trim()} className={`p-4 rounded-xl transition-all ${loading || !input.trim() ? 'opacity-20' : 'bg-stripe-indigo text-white shadow-lg shadow-stripe-indigo/20 hover:scale-105 active:scale-95'}`}><Send className="w-5 h-5" /></button>
-                </div>
-                <div className="flex items-center justify-between mt-4 px-4 opacity-30">
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-1.5"><div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" /><span className="text-[9px] font-bold uppercase tracking-widest">Secure</span></div>
-                    <div className="flex items-center gap-1.5"><ShieldCheck className="w-3 h-3" /><span className="text-[9px] font-bold uppercase tracking-widest">PII Scrubbing</span></div>
+            <div className="absolute bottom-0 left-0 w-full p-4 sm:p-8 bg-gradient-to-t from-white via-white to-transparent pointer-events-none">
+              <div className="max-w-4xl mx-auto pointer-events-auto">
+                <div className="relative group">
+                  <div className="absolute -inset-1 bg-gradient-to-r from-stripe-indigo to-purple-600 rounded-[1.5rem] sm:rounded-[2rem] blur opacity-10 group-focus-within:opacity-25 transition duration-1000 group-hover:duration-200"></div>
+                  <div className="relative bg-white border border-gray-100 rounded-[1.5rem] sm:rounded-[2rem] shadow-2xl overflow-hidden transition-all focus-within:border-stripe-indigo/50 focus-within:shadow-stripe-indigo/10">
+                    <textarea className="w-full py-4 sm:py-6 pl-6 sm:pl-8 pr-16 sm:pr-20 text-[14px] sm:text-[16px] outline-none resize-none placeholder:text-gray-300 min-h-[60px] sm:min-h-[80px] max-h-40 sm:max-h-60 overflow-y-auto font-medium text-stripe-slate leading-relaxed" placeholder={FORMATS.find(f => f.id === selectedFormat)?.placeholder || "Paste context here..."} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); generateResponse(); } }} />
+                    <div className="absolute right-3 sm:right-4 bottom-3 sm:bottom-4 flex items-center gap-2 sm:gap-3">
+                      <AnimatePresence>
+                        {loading && <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }} className="hidden xs:flex items-center gap-2 px-2 sm:px-3 py-1 sm:py-1.5 bg-stripe-bg rounded-xl border border-gray-100"><Loader2 className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-stripe-indigo animate-spin" /><span className="text-[8px] sm:text-[10px] font-bold text-stripe-indigo uppercase tracking-widest">Thinking</span></motion.div>}
+                      </AnimatePresence>
+                      <button onClick={() => generateResponse()} disabled={loading || !input.trim()} className={`p-2 sm:p-3 rounded-xl sm:rounded-2xl transition-all duration-300 ${loading || !input.trim() ? "text-gray-200 bg-gray-50" : "text-white bg-stripe-indigo hover:bg-stripe-indigo/90 shadow-xl shadow-stripe-indigo/20 hover:scale-105 active:scale-95"}`}><Send className="w-4 h-4 sm:w-5 sm:h-5" /></button>
+                    </div>
                   </div>
-                  <span className="text-[9px] font-bold uppercase tracking-widest">{userName}</span>
+                </div>
+                <div className="flex flex-col sm:flex-row items-center justify-between mt-3 sm:mt-4 px-4 gap-2">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2"><div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" /><span className="text-[9px] text-stripe-slate font-bold uppercase tracking-[0.15em] opacity-40">Secure</span></div>
+                    <div className="w-px h-3 bg-gray-200" />
+                    <div className="flex items-center gap-2"><ShieldCheck className="w-3 h-3 text-stripe-indigo opacity-40" /><span className="text-[9px] text-stripe-slate font-bold uppercase tracking-[0.15em] opacity-40">PII Scrubbing</span></div>
+                  </div>
+                  <div className="hidden xs:flex items-center gap-2 text-[9px] text-stripe-slate font-bold uppercase tracking-[0.15em] opacity-40"><span>Press</span><kbd className="px-1 py-0.5 bg-gray-100 rounded-md border border-gray-200 text-gray-500">Enter</kbd><span>to generate</span></div>
                 </div>
               </div>
             </div>
@@ -279,7 +513,11 @@ Code
       );
     }
 
-    createRoot(document.getElementById('root')).render(<App />);
+    const container = document.getElementById('root');
+    const root = createRoot(container);
+    root.render(<App />);
 </script>
 </body>
-</html></html>
+</html>
+lightbulb_tips
+Make changes, add new features, ask for anything
