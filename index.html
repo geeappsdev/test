@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>Stripe Support Assistant</title>
+<title>Gee Support AI</title>
 
 <script src="https://cdn.tailwindcss.com"></script>
 
@@ -20,36 +21,25 @@ font-family:Inter,system-ui,sans-serif;
 .markdown-body{
 font-size:14px;
 line-height:1.6;
-color:#425466;
 }
 
 .markdown-body p{
 margin-bottom:12px;
 }
 
-.markdown-body ul{
-list-style:disc;
-padding-left:18px;
-margin-bottom:12px;
-}
-
-.markdown-body strong{
-font-weight:600;
-color:#0a2540;
-}
-
 </style>
 
-<script type="importmap">
-{
-"imports":{
-"react":"https://esm.sh/react@18",
-"react-dom/client":"https://esm.sh/react-dom@18/client",
-"react-markdown":"https://esm.sh/react-markdown@10",
-"remark-gfm":"https://esm.sh/remark-gfm@4",
-"@google/genai":"https://esm.sh/@google/genai@1"
-}
-}
+<!-- React -->
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+<!-- Babel (so JSX works) -->
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<!-- Gemini SDK -->
+<script type="module">
+import {GoogleGenAI} from "https://esm.sh/@google/genai@1";
+window.GoogleGenAI = GoogleGenAI;
 </script>
 
 </head>
@@ -58,18 +48,14 @@ color:#0a2540;
 
 <div id="root"></div>
 
-<script type="module">
+<script type="text/babel">
 
-import React,{useState,useEffect,useRef} from "react";
-import {createRoot} from "react-dom/client";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import {GoogleGenAI} from "@google/genai";
+const {useState,useEffect,useRef} = React;
 
 const FORMATS=[
 {id:"EO",name:"Email Outline"},
 {id:"CL",name:"Chat / RAC Notes"},
-{id:"INV",name:"Internal Note"},
+{id:"INV",name:"Internal Notes"},
 {id:"QS",name:"Quick Summary"},
 {id:"CF",name:"Consult Form"}
 ];
@@ -78,13 +64,12 @@ const UNIVERSAL_RULES=`
 
 You are a Senior Stripe Support Assistant.
 
-Guidelines:
+Rules:
 
 - Professional tone
 - Simple English
-- Never reveal PII
-- Use placeholders [USER_NAME], [USER_EMAIL], [BUSINESS_NAME]
-- Follow the selected format carefully
+- Never expose PII
+- Always use placeholders [USER_NAME], [USER_EMAIL], [BUSINESS_NAME]
 
 `;
 
@@ -106,7 +91,6 @@ useEffect(()=>{
 
 const savedKey=localStorage.getItem("gee_key");
 const savedName=localStorage.getItem("gee_name");
-const savedHistory=localStorage.getItem("gee_history");
 
 if(savedKey && savedName){
 setApiKey(savedKey);
@@ -114,19 +98,11 @@ setName(savedName);
 setLogged(true);
 }
 
-if(savedHistory){
-setMessages(JSON.parse(savedHistory));
-}
-
 },[]);
 
 useEffect(()=>{
-localStorage.setItem("gee_history",JSON.stringify(messages));
-},[messages]);
-
-useEffect(()=>{
 endRef.current?.scrollIntoView({behavior:"smooth"});
-},[messages,loading]);
+},[messages]);
 
 function login(e){
 
@@ -138,7 +114,7 @@ return;
 }
 
 if(!apiKey.trim()){
-alert("Enter your Gemini API key");
+alert("Enter your API key");
 return;
 }
 
@@ -155,80 +131,48 @@ localStorage.removeItem("gee_key");
 localStorage.removeItem("gee_name");
 
 setLogged(false);
-setMessages([]);
 
-}
-
-function clearChat(){
-
-setMessages([]);
-localStorage.removeItem("gee_history");
-
-}
-
-function copy(text){
-navigator.clipboard.writeText(text);
 }
 
 async function generate(){
 
 if(!input.trim()) return;
-if(loading) return;
 
 setLoading(true);
 
-const userMessage={
-role:"user",
-content:input
-};
+const ai = new window.GoogleGenAI({apiKey});
 
-setMessages(prev=>[...prev,userMessage]);
-
-const ai=new GoogleGenAI({apiKey});
-
-const prompt=`
-
+const prompt = `
 ${UNIVERSAL_RULES}
 
-Selected Format: ${format}
+Format: ${format}
 
-Case Context:
-
+Context:
 ${input}
-
 `;
 
 try{
 
-const response=await ai.models.generateContent({
+const res = await ai.models.generateContent({
 model:"gemini-1.5-flash",
-contents:[
-{
-role:"user",
-parts:[{text:prompt}]
-}
-]
+contents:[{role:"user",parts:[{text:prompt}]}]
 });
 
-const text=response?.text || response?.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
+const text = res?.text || "No response.";
 
 setMessages(prev=>[
 ...prev,
+{role:"user",content:input},
 {role:"assistant",content:text}
 ]);
 
 setInput("");
 
-}catch(err){
-
-console.error(err);
+}catch(e){
 
 setMessages(prev=>[
 ...prev,
-{
-role:"assistant",
-content:"⚠️ Generation failed. Check API key or quota."
-}
+{role:"assistant",content:"Generation failed"}
 ]);
 
 }
@@ -241,30 +185,30 @@ if(!logged){
 
 return(
 
-<div class="min-h-screen flex items-center justify-center">
+<div className="min-h-screen flex items-center justify-center">
 
-<form onSubmit={login} class="bg-white shadow-xl p-8 rounded-xl w-80 space-y-4">
+<form onSubmit={login} className="bg-white p-8 rounded-xl shadow w-80">
 
-<h1 class="text-xl font-bold text-center">
+<h1 className="text-xl font-bold mb-6 text-center">
 Gee Support AI
 </h1>
 
 <input
-class="border p-2 w-full"
+className="border p-2 w-full mb-4"
 placeholder="Your Name"
 value={name}
 onChange={e=>setName(e.target.value)}
 />
 
 <input
-class="border p-2 w-full"
-type="password"
+className="border p-2 w-full mb-4"
 placeholder="Gemini API Key"
+type="password"
 value={apiKey}
 onChange={e=>setApiKey(e.target.value)}
 />
 
-<button class="bg-indigo-600 text-white w-full py-2 rounded">
+<button className="bg-indigo-600 text-white w-full py-2 rounded">
 Login
 </button>
 
@@ -278,34 +222,26 @@ Login
 
 return(
 
-<div class="max-w-4xl mx-auto p-6">
+<div className="max-w-4xl mx-auto p-6">
 
-<div class="flex justify-between mb-6">
+<div className="flex justify-between mb-6">
 
-<h1 class="text-xl font-bold">
+<h1 className="text-xl font-bold">
 Gee Support AI
 </h1>
 
-<div class="flex gap-3">
-
-<button onClick={clearChat} class="text-sm text-gray-500">
-Clear
-</button>
-
-<button onClick={logout} class="text-sm text-red-500">
+<button onClick={logout} className="text-red-500">
 Logout
 </button>
 
 </div>
 
-</div>
-
-<div class="mb-4">
+<div className="mb-4">
 
 <select
 value={format}
 onChange={e=>setFormat(e.target.value)}
-class="border p-2"
+className="border p-2"
 >
 
 {FORMATS.map(f=>(
@@ -318,68 +254,35 @@ class="border p-2"
 
 </div>
 
-<div class="space-y-6">
+<div className="space-y-4">
 
 {messages.map((m,i)=>(
-
 <div key={i}>
-
-{m.role==="assistant" ? (
-
-<div class="bg-white p-4 rounded shadow">
-
-<div class="markdown-body">
-<ReactMarkdown remarkPlugins={[remarkGfm]}>
-{m.content}
-</ReactMarkdown>
+<strong>{m.role==="user"?"You":"AI"}:</strong>
+<p>{m.content}</p>
 </div>
-
-<button
-onClick={()=>copy(m.content)}
-class="text-xs text-indigo-600 mt-2"
->
-Copy
-</button>
-
-</div>
-
-):( 
-
-<div class="text-gray-700">
-{m.content}
-</div>
-
-)}
-
-</div>
-
 ))}
-
-{loading && (
-<div class="text-gray-400">
-Generating...
-</div>
-)}
 
 <div ref={endRef}></div>
 
 </div>
 
-<div class="mt-6 flex gap-2">
+<div className="mt-6 flex gap-2">
 
 <textarea
-class="border p-3 flex-1"
+className="border p-3 flex-1"
 rows="3"
-placeholder="Paste case context..."
 value={input}
 onChange={e=>setInput(e.target.value)}
 />
 
 <button
 onClick={generate}
-class="bg-indigo-600 text-white px-6 rounded"
+className="bg-indigo-600 text-white px-6 rounded"
 >
-Send
+
+{loading ? "Generating..." : "Send"}
+
 </button>
 
 </div>
@@ -390,9 +293,7 @@ Send
 
 }
 
-const root=createRoot(document.getElementById("root"));
-
-root.render(<App/>);
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 
 </script>
 
