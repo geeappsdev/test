@@ -1,11 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<title>Gee Support AI</title>
+<title>Gee Support Assistant</title>
 
 <script src="https://cdn.tailwindcss.com"></script>
 
@@ -13,88 +11,316 @@
 
 <style>
 body{
-font-family:Inter,system-ui,sans-serif;
+font-family:Inter,system-ui;
 background:#f6f9fc;
+color:#0a2540;
 }
-
-.chat{
-max-height:60vh;
-overflow-y:auto;
-}
-
-.sidebar{
-width:220px;
-}
+.markdown-body p{margin-bottom:1rem}
+.markdown-body ul{padding-left:1.25rem;list-style:disc;margin-bottom:1rem}
+.markdown-body ol{padding-left:1.25rem;list-style:decimal;margin-bottom:1rem}
+.markdown-body strong{font-weight:700}
 </style>
 
+<script type="importmap">
+{
+"imports":{
+"react":"https://esm.sh/react@19",
+"react-dom/client":"https://esm.sh/react-dom@19/client",
+"react-markdown":"https://esm.sh/react-markdown@10",
+"remark-gfm":"https://esm.sh/remark-gfm@4",
+"@google/genai":"https://esm.sh/@google/genai@1.29.0"
+}
+}
+</script>
 </head>
 
 <body>
 
-<!-- LOGIN -->
+<div id="root"></div>
 
-<div id="login" class="min-h-screen flex items-center justify-center">
+<script type="module">
 
-<div class="bg-white shadow-xl p-8 rounded-xl w-80 space-y-4">
+import React,{useState,useEffect,useRef} from "react"
+import {createRoot} from "react-dom/client"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
+import {GoogleGenAI} from "@google/genai"
+
+const FORMATS=[
+{id:"EO",name:"Email Outline"},
+{id:"CL",name:"CHAT/RAC notes"},
+{id:"INV",name:"Internal Note"},
+{id:"QS",name:"Quick Summary"},
+{id:"CF",name:"Consult Form"}
+]
+
+const UNIVERSAL_RULES=`
+You are a Senior Stripe Support Assistant.
+
+Tone:
+Professional, warm, simple English.
+
+Rules:
+- Never expose PII
+- Always use placeholders [USER_NAME] [USER_EMAIL] [BUSINESS_NAME]
+- Email drafts only when EO format selected
+`
+
+function App(){
+
+const[input,setInput]=useState("")
+const[messages,setMessages]=useState([])
+const[loading,setLoading]=useState(false)
+const[selectedFormat,setSelectedFormat]=useState("EO")
+
+const[userName,setUserName]=useState("")
+const[userApiKey,setUserApiKey]=useState("")
+const[loggedIn,setLoggedIn]=useState(false)
+const[error,setError]=useState("")
+
+const messagesEndRef=useRef(null)
+
+useEffect(()=>{
+const n=localStorage.getItem("gee_name")
+const k=localStorage.getItem("gee_key")
+if(n&&k){
+setUserName(n)
+setUserApiKey(k)
+setLoggedIn(true)
+}
+},[])
+
+function handleLogin(e){
+
+e.preventDefault()
+
+if(!userName.trim()){
+setError("Enter your name")
+return
+}
+
+if(!userApiKey.startsWith("AIza")){
+setError("Invalid Gemini API key")
+return
+}
+
+localStorage.setItem("gee_name",userName)
+localStorage.setItem("gee_key",userApiKey)
+
+setLoggedIn(true)
+setError("")
+}
+
+function logout(){
+localStorage.clear()
+setLoggedIn(false)
+setMessages([])
+}
+
+async function generate(){
+
+if(!input.trim()||loading)return
+
+const userMsg={
+role:"user",
+content:input,
+timestamp:new Date()
+}
+
+setMessages(prev=>[...prev,userMsg])
+
+setLoading(true)
+setInput("")
+setError("")
+
+try{
+
+const ai=new GoogleGenAI({apiKey:userApiKey})
+
+const prompt=`
+${UNIVERSAL_RULES}
+
+FORMAT: ${selectedFormat}
+
+CASE CONTEXT:
+${input}
+`
+
+const response=await ai.models.generateContent({
+model:"gemini-2.5-flash",
+contents:[
+{
+role:"user",
+parts:[{text:prompt}]
+}
+],
+config:{
+temperature:0.4,
+topP:0.9,
+maxOutputTokens:4096
+}
+})
+
+const text=response?.text||
+response?.candidates?.[0]?.content?.parts?.[0]?.text
+
+if(!text){
+throw new Error("No response generated.")
+}
+
+const aiMsg={
+role:"assistant",
+content:text,
+timestamp:new Date()
+}
+
+setMessages(prev=>[...prev,aiMsg])
+
+}catch(err){
+
+console.error(err)
+setError(err.message||"Generation failed")
+
+}finally{
+setLoading(false)
+}
+
+}
+
+useEffect(()=>{
+messagesEndRef.current?.scrollIntoView({behavior:"smooth"})
+},[messages])
+
+if(!loggedIn){
+
+return(
+
+<div class="min-h-screen flex items-center justify-center">
+
+<form onSubmit={handleLogin} class="bg-white p-8 rounded-xl shadow w-80 space-y-4">
 
 <h1 class="text-xl font-bold text-center">
-Gee Support AI
+Gee Support Assistant
 </h1>
 
-<input id="name" class="border p-2 w-full rounded" placeholder="Agent Name">
+<input
+class="border p-2 w-full rounded"
+placeholder="Your Name"
+value={userName}
+onChange={e=>setUserName(e.target.value)}
+/>
 
-<input id="apikey" type="password" class="border p-2 w-full rounded" placeholder="Gemini API Key">
+<input
+class="border p-2 w-full rounded"
+placeholder="Gemini API Key"
+type="password"
+value={userApiKey}
+onChange={e=>setUserApiKey(e.target.value)}
+/>
 
-<button id="loginBtn" class="bg-indigo-600 text-white w-full py-2 rounded">
+{error && <p class="text-red-500 text-sm">{error}</p>}
+
+<button class="bg-indigo-600 text-white w-full py-2 rounded">
 Login
+</button>
+
+</form>
+
+</div>
+
+)
+
+}
+
+return(
+
+<div class="flex h-screen">
+
+<div class="w-60 bg-gray-900 text-white p-4">
+
+<h2 class="font-bold mb-4">Formats</h2>
+
+{FORMATS.map(f=>(
+
+<button
+key={f.id}
+onClick={()=>setSelectedFormat(f.id)}
+class={`block w-full text-left px-3 py-2 rounded mb-2 ${
+selectedFormat===f.id?"bg-indigo-600":"hover:bg-gray-700"
+}`}
+>
+{f.name}
+</button>
+
+))}
+
+<hr class="my-4"/>
+
+<button
+onClick={()=>setMessages([])}
+class="text-sm text-gray-300 block mb-2"
+>
+Clear Chat
+</button>
+
+<button
+onClick={logout}
+class="text-sm text-red-400"
+>
+Logout
 </button>
 
 </div>
 
+<div class="flex-1 flex flex-col">
+
+<div class="flex-1 overflow-y-auto p-6 space-y-6">
+
+{messages.map((m,i)=>(
+<div key={i}>
+
+<b>{m.role==="user"?"You":"AI"}:</b>
+
+{m.role==="assistant"?(
+<div class="markdown-body">
+<ReactMarkdown remarkPlugins={[remarkGfm]}>
+{m.content}
+</ReactMarkdown>
 </div>
-
-<!-- APP -->
-
-<div id="app" class="hidden flex">
-
-<!-- SIDEBAR -->
-
-<div class="sidebar bg-white shadow h-screen p-4">
-
-<h2 class="font-bold mb-4">Formats</h2>
-
-<select id="format" class="border p-2 w-full rounded">
-
-<option value="EO">Email Outline</option>
-<option value="CL">Chat / RAC Notes</option>
-<option value="INV">Internal Notes</option>
-<option value="QS">Quick Summary</option>
-<option value="CF">Consult Form</option>
-
-</select>
-
-<hr class="my-4">
-
-<button id="clear" class="text-sm text-gray-500 mb-2">Clear Chat</button>
-<button id="logout" class="text-sm text-red-500">Logout</button>
+):(
+<p>{m.content}</p>
+)}
 
 </div>
+))}
 
-<!-- MAIN -->
+{loading && <p>Generating response...</p>}
 
-<div class="flex-1 p-6">
+{error && <p class="text-red-500">{error}</p>}
 
-<h1 class="text-xl font-bold mb-4">
-Gee Support AI
-</h1>
+<div ref={messagesEndRef}></div>
 
-<div id="messages" class="chat space-y-4 mb-6"></div>
+</div>
 
-<div class="flex gap-2">
+<div class="border-t p-4 flex gap-2">
 
-<textarea id="input" rows="3" class="border p-3 flex-1 rounded" placeholder="Paste case logs or context..."></textarea>
+<textarea
+class="border flex-1 p-3 rounded"
+placeholder="Paste case logs here..."
+value={input}
+onChange={e=>setInput(e.target.value)}
+onKeyDown={e=>{
+if(e.key==="Enter"&&!e.shiftKey){
+e.preventDefault()
+generate()
+}
+}}
+/>
 
-<button id="send" class="bg-indigo-600 text-white px-6 rounded">
+<button
+onClick={generate}
+class="bg-indigo-600 text-white px-6 rounded"
+>
 Generate
 </button>
 
@@ -104,267 +330,11 @@ Generate
 
 </div>
 
-
-<script>
-
-let apiKey=""
-let agentName=""
-
-const rules=`
-
-UNIVERSAL GUIDELINES
-
-Role:
-Senior Stripe Support Assistant
-
-Tone:
-Professional
-Warm
-Simple English
-
-Privacy:
-Never expose PII
-Use placeholders
-[USER_NAME]
-[USER_EMAIL]
-[BUSINESS_NAME]
-
-Email drafts ONLY when EO selected.
-
-Sign-off:
-Best,
-[AGENT_NAME]
-
-`;
-
-const formats={
-
-EO:`
-EMAIL OUTLINE FORMAT
-
-1 Summary
-2 Email Response
-3 Steps I took
-4 What response should include
-5 Already know
-6 Need to know
-7 What the user must do
-8 Links used
-9 DSAT Analysis
-10 Outcome Summary
-11 Case Status
-12 Why case open
-13 Speculation
-14 User dissatisfaction trigger
-`,
-
-CL:`
-CHAT / RAC NOTES FORMAT
-
-1 Checked related cases
-2 Read full thread
-3 Issue summary
-4 Steps taken
-5 Object IDs
-6 Outcome
-7 Consult team
-8 Speculation
-9 Why case open
-10 Dissatisfaction trigger
-11 Docs used
-`,
-
-INV:`
-INTERNAL NOTE FORMAT
-
-1 Consent recorded
-2 Authentication method
-3 Account type
-4 Account ID
-5 Checked related cases
-6 Thread reviewed
-7 User concerns
-8 Topic
-9 Summary
-10 Steps taken
-11 Outcome
-12 Why case open
-13 Speculation
-14 Dissatisfaction trigger
-15 Required reply info
-`,
-
-QS:`
-QUICK SUMMARY FORMAT
-
-1 Issue summary
-2 Case link
-3 Case ID
-4 Account ID
-5 Platform ID
-6 Connected account ID
-7 Speculation
-8 Stripe resources
-9 Relevant IDs
-10 Why case open
-11 Dissatisfaction trigger
-12 Sentiment
-`,
-
-CF:`
-CONSULT FORM FORMAT
-
-1 Consult team
-2 Ticket link
-3 Object IDs
-4 User issue summary
-5 Investigation
-6 Speculation
-`
-
-}
-
-function showLogin(){
-document.getElementById("login").classList.remove("hidden")
-document.getElementById("app").classList.add("hidden")
-}
-
-function showApp(){
-document.getElementById("login").classList.add("hidden")
-document.getElementById("app").classList.remove("hidden")
-}
-
-document.getElementById("loginBtn").onclick=()=>{
-
-agentName=document.getElementById("name").value.trim()
-apiKey=document.getElementById("apikey").value.trim()
-
-if(!agentName){alert("Enter name");return}
-if(!apiKey){alert("Enter API key");return}
-
-localStorage.setItem("gee_name",agentName)
-localStorage.setItem("gee_key",apiKey)
-
-showApp()
-
-}
-
-document.getElementById("logout").onclick=()=>{
-localStorage.removeItem("gee_name")
-localStorage.removeItem("gee_key")
-showLogin()
-}
-
-document.getElementById("clear").onclick=()=>{
-document.getElementById("messages").innerHTML=""
-}
-
-function addMessage(role,text){
-
-const box=document.createElement("div")
-
-box.className="bg-white p-4 rounded shadow"
-
-box.innerHTML=`
-<strong>${role==="user"?"You":"AI"}:</strong>
-<pre class="mt-2 whitespace-pre-wrap">${text}</pre>
-<button class="text-xs text-indigo-600 mt-2 copy">Copy</button>
-`
-
-box.querySelector(".copy").onclick=()=>{
-navigator.clipboard.writeText(text)
-}
-
-document.getElementById("messages").appendChild(box)
-
-}
-
-async function generate(){
-
-const input=document.getElementById("input").value.trim()
-const format=document.getElementById("format").value
-
-if(!input) return
-
-addMessage("user",input)
-
-document.getElementById("input").value=""
-
-const prompt=`
-
-${rules}
-
-FORMAT RULES
-${formats[format]}
-
-CASE CONTEXT
-${input}
-
-`;
-
-try{
-
-const res=await fetch(
-`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-{
-method:"POST",
-headers:{
-"Content-Type":"application/json"
-},
-body:JSON.stringify({
-contents:[
-{
-parts:[{text:prompt}]
-}
-]
-})
-}
 )
 
-const data=await res.json()
-
-if(data.error){
-addMessage("assistant","API Error: "+data.error.message)
-return
 }
 
-let text="No response."
-
-if(data.candidates &&
-data.candidates[0] &&
-data.candidates[0].content &&
-data.candidates[0].content.parts){
-
-text=data.candidates[0].content.parts[0].text
-
-}
-
-addMessage("assistant",text)
-
-}catch(e){
-
-addMessage("assistant","Network error or invalid API key.")
-
-}
-
-}
-
-document.getElementById("send").onclick=generate
-
-const savedName=localStorage.getItem("gee_name")
-const savedKey=localStorage.getItem("gee_key")
-
-if(savedName && savedKey){
-
-agentName=savedName
-apiKey=savedKey
-showApp()
-
-}else{
-
-showLogin()
-
-}
+createRoot(document.getElementById("root")).render(<App/>)
 
 </script>
 
