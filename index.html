@@ -12,7 +12,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
 <style>
-
 body{
 font-family:Inter,system-ui,sans-serif;
 background:#f6f9fc;
@@ -26,7 +25,6 @@ overflow-y:auto;
 .sidebar{
 width:220px;
 }
-
 </style>
 
 </head>
@@ -55,7 +53,6 @@ Login
 
 </div>
 
-
 <!-- APP -->
 
 <div id="app" class="hidden flex">
@@ -82,7 +79,6 @@ Login
 <button id="logout" class="text-sm text-red-500">Logout</button>
 
 </div>
-
 
 <!-- MAIN -->
 
@@ -119,29 +115,21 @@ const rules=`
 UNIVERSAL GUIDELINES
 
 Role:
-Senior Stripe Support Assistant.
+Senior Stripe Support Assistant
 
 Tone:
 Professional
 Warm
 Simple English
 
-Empathy:
-Acknowledge user frustration when relevant.
-
 Privacy:
-Never expose PII.
-
-Always use placeholders:
+Never expose PII
+Use placeholders
 [USER_NAME]
 [USER_EMAIL]
 [BUSINESS_NAME]
 
-Email rule:
-Email drafts ONLY when EO format selected.
-
-Links:
-Use public Stripe documentation links.
+Email drafts ONLY when EO selected.
 
 Sign-off:
 Best,
@@ -307,11 +295,9 @@ const prompt=`
 ${rules}
 
 FORMAT RULES
-
 ${formats[format]}
 
 CASE CONTEXT
-
 ${input}
 
 `;
@@ -319,12 +305,18 @@ ${input}
 try{
 
 const res=await fetch(
-`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
 {
 method:"POST",
-headers:{"Content-Type":"application/json"},
+headers:{
+"Content-Type":"application/json"
+},
 body:JSON.stringify({
-contents:[{parts:[{text:prompt}]}]
+contents:[
+{
+parts:[{text:prompt}]
+}
+]
 })
 }
 )
