@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gee Support AI</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    body {
+      background: #0f172a;
+    }
+
+    .prose h1 { font-size: 1.6rem; font-weight: bold; margin-top: 12px; }
+    .prose h2 { font-size: 1.4rem; font-weight: bold; margin-top: 12px; }
+    .prose h3 { font-size: 1.2rem; font-weight: bold; margin-top: 12px; }
+
+    .prose ul { list-style: disc; margin-left: 20px; }
+    .prose ol { list-style: decimal; margin-left: 20px; }
+
+    .prose a {
+      color: #2563eb;
+      text-decoration: underline;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState } = React;
+
+    /* ======================
+    ALLOWED STRIPE DOMAINS
+    ====================== */
+    const allowedDomains = [
+      "docs.stripe.com",
+      "support.stripe.com",
+      "stripe.com",
+      "dashboard.stripe.com"
+    ];
+
+    /* ======================
+    STRIPE DOC FALLBACK LIBRARY
+    ====================== */
+    const fallbackDocs = [
+      "https://docs.stripe.com/payments/accept-a-payment",
+      "https://docs.stripe.com/refunds",
+      "https://docs.stripe.com/disputes",
+      "https://docs.stripe.com/webhooks",
+      "https://docs.stripe.com/declines",
+      "https://docs.stripe.com/payments/checkout",
+      "https://docs.stripe.com/billing/subscriptions",
+      "https://docs.stripe.com/connect",
+      "https://docs.stripe.com/tax",
+      "https://docs.stripe.com/invoicing"
+    ];
+
+    /* ======================
+    KEYWORD EXTRACTION
+    ====================== */
+    function extractKeywords(text) {
+      text = text.toLowerCase();
+      const keywords = [];
+
+      if (text.includes("webhook")) keywords.push("webhook");
+      if (text.includes("dispute")) keywords.push("dispute evidence");
+      if (text.includes("refund")) keywords.push("refund payment");
+      if (text.includes("subscription")) keywords.push("stripe subscription");
+      if (text.includes("checkout")) keywords.push("stripe checkout");
+      if (text.includes("decline")) keywords.push("stripe decline");
+      if (text.includes("connect")) keywords.push("stripe connect");
+      if (text.includes("tax")) keywords.push("stripe tax");
+      if (text.includes("invoice")) keywords.push("stripe invoice");
+      if (text.includes("paymentintent")) keywords.push("stripe payment intent");
+
+      return keywords;
+    }
+
+    /* ======================
+    STRIPE SEARCH QUERY
+    ====================== */
+    function buildSearchQueries(keywords) {
+      const queries = [];
+      keywords.forEach(k => {
+        queries.push(`site:docs.stripe.com ${}`);
+        queries.push(`site:support.stripe.com ${}`);
+      });
+      return queries;
+    }
+
+    /* ======================
+    DOMAIN VALIDATION
+    ====================== */
+    function isStripeLink(url) {
+      try {
+        const domain = new URL(url).hostname;
+        return allowedDomains.some(d => domain.includes(d));
+      } catch {
+        return false;
+      }
+    }
+
+    /* ======================
+    LINK VALIDATION
+    ====================== */
+    function filterStripeLinks(links) {
+      return links.filter(l => isStripeLink(l));
+    }
+
+    /* ======================
+    TEMPLATES
+    ====================== */
+    const templates = {
+      EMAIL: `
+## Summary
+
+## Already know
+
+## Need to know
+
+## To do
+
+## Outcome Summary
+
+## DSAT analysis
+
+## Distressed user analysis
+
+## Information the reply must include
+
+## Resources used
+- Stripe documentation links here
+
+---
+
+## Email Draft
+
+Hi there,
+
+Best,
+[ALIAS]
+`,
+
+      CHAT: `
+## Summary of the issue
+
+## Steps I took
+1.
+2.
+
+## Consult
+NA
+
+## Relevant Objects
+NA
+
+## Final outcome
+
+## Speculations
+
+## Why case open/pending
+
+## Distressed user analysis
+
+## What triggered dissatisfaction
+
+## Relevant Stripe resources
+`,
+
+      INVESTIGATION: `
+Consent to record: NA  
+Authentication method: NA  
+User account type: NA  
+Account ID: NA  
+
+Checked related cases? YES  
+Read entire thread? YES  
+
+## User concerns
+
+## Summary of the issue
+
+## Steps I took
+1.
+2.
+
+## Check Lumos
+NA
+
+## Check Confluence
+NA
+
+## Public documents used
+
+## Dashboard link
+NA
+
+## Final outcome
+
+## Why case open/pending
+
+## Distressed User
+
+## Information the reply must include
+`
+    };
+
+    /* ======================
+    APP
+    ====================== */
+    function App() {
+      const [context, setContext] = useState("");
+      const [output, setOutput] = useState("");
+      const [alias, setAlias] = useState(localStorage.getItem("alias") || "");
+      const [apiKey, setApiKey] = useState(localStorage.getItem("geminiKey") || "");
+      const [loading, setLoading] = useState(false);
+
+      function saveSettings() {
+        localStorage.setItem("alias", alias);
+        localStorage.setItem("geminiKey", apiKey);
+        alert("Saved");
+      }
+
+      /* ======================
+      SMART LINK ENGINE
+      ====================== */
+      function generateStripeLinks() {
+        const keywords = extractKeywords(context);
+        const queries = buildSearchQueries(keywords);
+        let links = [];
+
+        queries.forEach(q => {
+          links.push(`https://www.google.com/search?q=${encodeURIComponent(q)}`);
+        });
+
+        links = filterStripeLinks(links);
+
+        if (links.length === 0) {
+          links = fallbackDocs;
+        }
+
+        return links;
+      }
+
+      /* ======================
+      AI GENERATION
+      ====================== */
+      async function generate(type) {
+        if (!apiKey) {
+            alert("Please save your Gemini API Key first.");
+            return;
+        }
+
+        setLoading(true);
+
+        const stripeLinks = generateStripeLinks();
+        const template = templates[type].replace("[ALIAS]", alias || "Support Agent");
+
+        const prompt = `
+You are a Stripe support assistant.
+
+CASE CONTEXT
+${}
+
+Stripe documentation links discovered:
+${stripeLinks.join("\n")}
+
+Rules:
+Use Stripe links relevant to the issue.
+
+Allowed domains:
+docs.stripe.com
+support.stripe.com
+stripe.com
+
+Do not invent links.
+
+Fill the template below.
+
+${}
+`;
+
+        try {
+          const res = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${}`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                contents: [
+                  {
+                    parts: [
+                      { text: prompt }
+                    ]
+                  }
+                ]
+              })
+            }
+          );
+
+          const data = await res.json();
+          let text = "Generation failed";
+
+          if (data.candidates) {
+            text = data.candidates[0].content.parts.map(p => p.text).join("");
+          } else if (data.error) {
+            text = `Error: ${data.error.message}`;
+          }
+
+          setOutput(text);
+        } catch (error) {
+          setOutput(`Request failed: ${error.message}`);
+        }
+
+        setLoading(false);
+      }
+
+      /* ======================
+      UI
+      ====================== */
+      return (
+        <div className="p-6 text-white">
+          <div className="max-w-5xl mx-auto">
+            <h1 className="text-3xl font-bold mb-6">
+              Gee Support AI
+            </h1>
+
+            <div className="bg-slate-800 p-4 rounded mb-4">
+              <div className="flex gap-2">
+                <input
+                  className="flex-1 p-2 rounded text-black"
+                  placeholder="Gemini API key"
+                  value={}
+                  onChange={e => setApiKey(e.target.value)}
+                />
+
+                <input
+                  className="flex-1 p-2 rounded text-black"
+                  placeholder="Agent Alias"
+                  value={}
+                  onChange={e => setAlias(e.target.value)}
+                />
+
+                <button
+                  className="bg-green-600 px-4 py-2 rounded font-bold hover:bg-green-500 transition-colors"
+                  onClick={}
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-slate-800 p-4 rounded mb-4">
+              <h2 className="font-bold mb-2">
+                Case Context
+              </h2>
+              <textarea
+                rows="8"
+                className="w-full p-3 text-black rounded"
+                value={}
+                placeholder="Paste the customer email or case notes here..."
+                onChange={e => setContext(e.target.value)}
+              />
+            </div>
+
+            <div className="flex gap-3 mb-4 flex-wrap">
+              <button
+                className="bg-purple-600 px-4 py-2 rounded font-bold hover:bg-purple-500 transition-colors disabled:opacity-50"
+                onClick={() => generate("EMAIL")}
+                disabled={loading}
+              >
+                Email Draft
+              </button>
+
+              <button
+                className="bg-blue-600 px-4 py-2 rounded font-bold hover:bg-blue-500 transition-colors disabled:opacity-50"
+                onClick={() => generate("CHAT")}
+                disabled={loading}
+              >
+                Chat/RAC Notes
+              </button>
+
+              <button
+                className="bg-orange-600 px-4 py-2 rounded font-bold hover:bg-orange-500 transition-colors disabled:opacity-50"
+                onClick={() => generate("INVESTIGATION")}
+                disabled={loading}
+              >
+                Investigation Notes
+              </button>
+            </div>
+
+            <div className="bg-slate-800 p-4 rounded">
+              <h2 className="font-bold mb-2">
+                Generated Output
+              </h2>
+
+              {loading && <p className="mb-3 text-yellow-400">Generating output via Gemini...</p>}
+
+              <button
+                className="bg-gray-700 hover:bg-gray-600 transition-colors px-3 py-1 rounded mb-3 text-sm"
+                onClick={() => navigator.clipboard.writeText(output)}
+              >
+                Copy Markdown
+              </button>
+
+              <div
+                className="bg-white text-black p-4 rounded prose max-w-none min-h-[100px]"
+                dangerouslySetInnerHTML={{ __html: marked.parse(output || "No output generated yet.") }}
+              ></div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+
+</html>
